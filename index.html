@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!-- 本地漫画阅览器 · MIT License · Copyright (c) 2026 RJL0619 · 完整许可证见同目录 LICENSE -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本地漫画阅览器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 空状态：尚未导入文件夹 -->
+  <div id="emptyState" class="empty-state">
+    <div class="empty-box">
+      <h1>📚 本地漫画阅览器</h1>
+      <p>导入一个包含图片的文件夹，即可开始自动翻页阅读</p>
+      <button id="openBtn" class="btn primary">📂 导入文件夹</button>
+      <div id="recentBox" class="recent" style="display:none">
+        <div class="recent-title">最近打开</div>
+        <ul id="recentList" class="recent-list"></ul>
+      </div>
+      <p class="hint">支持 jpg / jpeg / png / webp / gif / bmp<br>请使用 Chrome 或 Edge 浏览器打开本页面</p>
+    </div>
+  </div>
+
+  <!-- 阅读器 -->
+  <div id="reader" class="reader" style="display:none">
+    <header class="topbar">
+      <button id="openBtn2" class="btn" title="重新导入文件夹">📂</button>
+      <span id="folderName" class="folder-name">-</span>
+      <span id="pageInfo" class="page-info">-</span>
+      <div class="spacer"></div>
+
+      <button id="prevBtn" class="btn" title="上一页 (←)">‹</button>
+      <button id="nextBtn" class="btn" title="下一页 (→)">›</button>
+      <button id="autoBtn" class="btn" title="自动翻页 / 暂停 (P)">▶ 自动翻页</button>
+      <button id="randomBtn" class="btn" title="切换到随机顺序（只换顺序，不会自动播放）(R)">随机顺序</button>
+      <button id="sidebarBtn" class="btn active" title="收起/展开设置面板 (S)">⚙ 设置</button>
+      <button id="helpBtn" class="btn" title="快捷键列表 (?)">⌨ 快捷键</button>
+      <button id="fullBtn" class="btn" title="真全屏：隐藏所有界面，只显示图片 (F，Esc 退出)">⛶ 真全屏</button>
+    </header>
+
+    <!-- 阅读进度条 -->
+    <div class="progress-wrap">
+      <input type="range" id="progressBar" min="0" max="0" value="0" step="1">
+    </div>
+
+    <div class="main-row">
+      <aside id="sidebar" class="sidebar">
+        <div class="side-group">
+          <div class="side-title">显示</div>
+          <div class="side-row">
+            <button id="themeBtn" class="btn" title="阅读背景：白 / 黄(护眼) / 黑">背景：白</button>
+          </div>
+          <div class="side-row">
+            <select id="fitSelect" class="btn select" title="图片适配模式">
+              <option value="height" selected>高度适应</option>
+              <option value="width">宽度适应</option>
+              <option value="original">原始大小</option>
+              <option value="percent">百分比缩放</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <button id="zoomBtn" class="btn" title="点击切换缩放比例 (+/- 键微调)">100%</button>
+          </div>
+          <div class="side-row">
+            <button id="fullBtn" class="btn" title="真全屏：隐藏所有界面，只显示图片 (F，Esc 退出)">⛶ 真全屏</button>
+          </div>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">播放</div>
+          <div class="side-row">
+            <label class="ctrl">翻页间隔
+              <input type="range" id="interval" min="1" max="60" step="1" value="5">
+              <span id="intervalVal" class="ctrl-val">5 秒</span>
+            </label>
+          </div>
+          <div class="side-row">
+            <select id="effectSelect" class="btn select" title="翻页特效">
+              <option value="fade" selected>淡入淡出</option>
+              <option value="slide">滑动翻页</option>
+              <option value="zoom">缩放淡入</option>
+              <option value="none">无</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <label class="ctrl" title="特效动画播放速度">速度
+              <input type="range" id="animSpeed" min="100" max="1500" step="50" value="400">
+              <span id="animSpeedVal" class="ctrl-val">400ms</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">浏览</div>
+          <div class="side-row">
+            <select id="sortSelect" class="btn select" title="图片排序方式">
+              <option value="name-asc" selected>文件名 ↑</option>
+              <option value="name-desc">文件名 ↓</option>
+              <option value="time-desc">时间 新→旧</option>
+              <option value="time-asc">时间 旧→新</option>
+              <option value="size-desc">大小 大→小</option>
+              <option value="size-asc">大小 小→大</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <button id="listBtn" class="btn" title="图片列表 (T)">图片列表</button>
+          </div>
+        </div>
+      </aside>
+
+      <div id="viewer">
+        <img id="mainImg" alt="" draggable="false">
+      </div>
+    </div>
+
+    <!-- 图片列表（缩略图网格，虚拟滚动） -->
+    <div id="thumbPanel" class="thumb-panel" style="display:none">
+      <div class="thumb-head">
+        <span id="thumbCount" class="thumb-count">图片列表</span>
+        <span class="thumb-tip">滚轮滚动 · 点击缩略图跳转 · 按 T 关闭</span>
+        <button id="thumbClose" class="btn thumb-close" title="关闭列表 (T)">✕</button>
+      </div>
+      <div id="thumbGrid" class="thumb-grid">
+        <div id="thumbSpacer" class="thumb-spacer"></div>
+      </div>
+    </div>
+
+    <!-- 续读提示条 -->
+    <div id="continueBar" class="continue-bar" style="display:none">
+      <span id="continueText" class="continue-text"></span>
+      <button id="continueBtn" class="btn">继续阅读</button>
+      <button id="dismissBtn" class="btn">✕</button>
+    </div>
+
+    <!-- 真全屏提示层：只在真全屏下、且刚有操作时短暂出现，随后自动淡出 -->
+    <div id="fsHud" class="fs-hud">
+      <div class="fs-hud-main">
+        <span id="fsHudState" class="fs-hud-state">▶ 已暂停</span>
+        <span id="fsHudPage" class="fs-hud-page">1 / 1</span>
+      </div>
+      <div id="fsHudHint" class="fs-hud-hint">点画面中间 播放 / 暂停 · 点左右两侧翻页 · P 播放暂停 · Esc 退出全屏</div>
+    </div>
+
+    <footer id="autoStatus" class="auto-status"></footer>
+  </div>
+
+  <input type="file" id="fileInput" webkitdirectory directory multiple style="display:none">
+
+  <!-- 快捷键列表弹窗 -->
+  <div id="helpModal" class="modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span>快捷键</span>
+        <button id="helpClose" class="btn" title="关闭">✕</button>
+      </div>
+      <table class="shortcut-table">
+        <tr><td>← / → / 空格</td><td>上一页 / 下一页</td></tr>
+        <tr><td>P / Enter</td><td>自动翻页 开始 / 暂停</td></tr>
+        <tr><td>R</td><td>随机顺序 开 / 关（只换顺序，不会自动播放）</td></tr>
+        <tr><td>T</td><td>图片列表 开 / 关</td></tr>
+        <tr><td>S</td><td>设置面板 开 / 关</td></tr>
+        <tr><td>F</td><td>真全屏（隐藏所有界面，只显示图片；Esc 退出）</td></tr>
+        <tr><td>+ / -</td><td>放大 / 缩小</td></tr>
+        <tr><td>W</td><td>宽度适应</td></tr>
+        <tr><td>H</td><td>高度适应（默认）</td></tr>
+        <tr><td>O</td><td>原始大小</td></tr>
+        <tr><td>0</td><td>恢复高度适应</td></tr>
+      </table>
+      <div class="modal-foot">
+        鼠标：点击图片左 / 右半区翻页，中间区域开始 / 暂停自动翻页；Ctrl + 滚轮 缩放。<br>
+        随机顺序与自动翻页是两个独立开关：先点「随机顺序」打乱，再点「自动翻页」才会连续播放。<br>
+        真全屏（F）下没有常驻按钮：动一下鼠标 / 点一下画面，屏幕底部会浮出提示，显示当前
+        「自动翻页中 · 第几页」，2.6 秒后自动淡出。
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
