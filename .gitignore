@@ -1,0 +1,24 @@
+# 系统 / 编辑器杂物
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+
+# 临时与备份文件（本工具运行时不会在目录里产生任何文件，记录都存在浏览器里）
+*.bak
+*.bak_*
+*.tmp
+*.log
+~$*
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+
+# Python（如果顺手在这里跑脚本）
+__pycache__/
+*.pyc
+
+# 本机推送工具（含本机 git 路径，不随仓库发布）
+推送公开仓库.bat
