@@ -1,0 +1,663 @@
+/*!
+ * 本地漫画阅览器 · 样式
+ * MIT License · Copyright (c) 2026 RJL0619
+ * 完整许可证见同目录 LICENSE 文件。
+ *
+ * 版面原则（2026-10-13 第二版）：
+ *   画面铺满整个窗口，界面一律是「浮层」，谁也不占版面高度。
+ *   鼠标移到窗口上沿 / 下沿才浮出控制台与上下文条，移开约 2.6 秒自动收起。
+ *   图片列表与设置面板互斥（同一时间只开一个），都浮在画面之上，不把图片挤小。
+ */
+/* ===== 主题变量 ===== */
+:root {
+  --bg: #f5f5f7;
+  --chrome: #fbfbfc;        /* 浅色浮层用（只在空状态等少数地方用到） */
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #8a8f98;
+  --border: #e3e4e8;
+  --accent: #3f6fe0;
+  --accent-text: #ffffff;
+  --canvas: #ffffff;
+  --checker-a: #ffffff;
+  --checker-b: #e8e8ea;
+  /* 浮层专用的半透明"玻璃"色：浅色主题下用深色浮层压住画面，保证浮层上的字始终看得清 */
+  --glass: rgba(22, 24, 28, 0.84);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-text: #eef0f3;
+  --glass-muted: #a8aeb8;
+}
+[data-theme="yellow"] {
+  --bg: #f6edda;
+  --chrome: #fdf8ec;
+  --panel: #fdf8ec;
+  --text: #4a4432;
+  --muted: #9c937a;
+  --border: #e6dbbd;
+  --accent: #b0741a;
+  --accent-text: #ffffff;
+  --canvas: #f8efd5;
+  --checker-a: #f8efd5;
+  --checker-b: #efe3c4;
+  --glass: rgba(46, 38, 22, 0.86);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-text: #f4efe3;
+  --glass-muted: #bfb49a;
+}
+[data-theme="black"] {
+  --bg: #121212;
+  --chrome: #1a1a1a;
+  --panel: #1e1e1e;
+  --text: #e0e0e0;
+  --muted: #9a9a9a;
+  --border: #333333;
+  --accent: #6ea8ff;
+  --accent-text: #0f1419;
+  --canvas: #000000;
+  --checker-a: #232323;
+  --checker-b: #2c2c2c;
+  --glass: rgba(10, 10, 12, 0.86);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.16);
+  --glass-text: #e8e8e8;
+  --glass-muted: #9a9a9a;
+}
+
+/* ===== 基础 ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }   /* 界面全是浮层，页面本身不滚动 */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* ⚠ 背景要用画布色（--canvas）而不是 --bg：进真全屏后浏览器把视口之外涂的是
+     html 的背景色，若这里仍是浅灰，切到「黑」背景时屏幕外围就不跟着变黑（实测过）。 */
+  background: var(--canvas);
+  color: var(--text);
+  transition: background 0.25s, color 0.25s;
+}
+/* 等宽只用在"读表"的地方：页码、计时、计数 */
+.page-info, .ctrl-val, .thumb-count {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 按钮 ===== */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: 0.36; cursor: default; }
+.btn:disabled:hover { border-color: var(--border); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-size: 15px;
+  padding: 11px 24px;
+  border-radius: 10px;
+}
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.active { border-color: var(--accent); color: var(--accent); }
+.btn.select { appearance: none; -webkit-appearance: none; cursor: pointer; }
+/* 只放一个符号的方按钮：宽高一致，不因字宽变化而抖 */
+.btn-icon { padding: 6px 0; min-width: 32px; justify-content: center; gap: 0; }
+/* 图标按钮里还挂了键帽时，宽度交给内容（图标 + 键帽），否则键帽会被压扁 */
+.btn-icon:has(kbd) { width: auto; padding: 6px 10px; gap: 7px; }
+
+/* 键帽：把快捷键直接印在按钮上，这排按钮本身就是键盘地图 */
+kbd {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--chrome);
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn:hover kbd { color: var(--text); }
+.btn.active kbd { color: var(--accent); border-color: var(--accent); }
+
+/* ===== 浮层里的按钮：深色玻璃底 + 亮字，压在画面上也看得清 ===== */
+.side-panel .btn,
+.thumb-head .btn {
+  background: var(--glass-hi);
+  border-color: var(--glass-line);
+  color: var(--glass-text);
+}
+.side-panel .btn:hover,
+.thumb-head .btn:hover { border-color: var(--accent); }
+.side-panel .btn.active,
+.thumb-head .btn.active { border-color: var(--accent); color: var(--accent); }
+.side-panel kbd,
+.thumb-head kbd {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: var(--glass-line);
+  color: var(--glass-muted);
+}
+.side-panel .btn:hover kbd { color: var(--glass-text); }
+/* 浮层里的下拉框：原生下拉在深底上必须把文字色与选项色都设上 */
+.side-panel select.btn, .thumb-head select.btn {
+  background: var(--glass-hi);
+  color: var(--glass-text);
+}
+.side-panel select.btn option { background: #1c1e22; color: #eef0f3; }
+
+/* ===== 空状态 ===== */
+.empty-state {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.empty-box {
+  text-align: center;
+  padding: 44px 52px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  max-width: 460px;
+}
+.empty-box h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 10px;
+}
+.empty-box > p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+.empty-box .btn.primary { margin-top: 22px; }
+.empty-box .hint { font-size: 12px; margin-top: 20px; line-height: 1.8; color: var(--muted); }
+.recent {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.recent-title { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.recent-list { list-style: none; }
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--panel);
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+.recent-item:hover { border-color: var(--accent); }
+.recent-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.recent-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* ===== 阅读器：画面铺满，浮层绝对定位 ===== */
+/* ⚠ 画布色必须一路刷到 html/body：进真全屏后浏览器会把视口之外的区域涂成 html 的背景色，
+   只给 #viewer 上色的话，切到「黑」背景时屏幕外围还是浅灰（实测过）。 */
+html, body { background: var(--canvas); }
+.reader {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--canvas);
+}
+/* ⚠ 这一行是"图片看起来靠左"的根因：.reader 是 flex(row)，
+   .main-row 作为 flex 子项默认 flex:0 1 auto —— 它会被内容撑多少就是多少宽，
+   于是画面区只有图片那么宽（1920 窗口里只占 755px），图片在**那个窄条**里居中，
+   在整屏看来就贴在左边。必须让它吃满宽度。 */
+.main-row {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+/* 图片居中：三层结构，每层解决一个具体问题
+     1) #viewer  —— 可滚动容器：grid-template 用 "100%" 定死一条赛道，
+                    这样里面的百分比高度才有确定的参照（用 place-content/auto 行都会变成循环依赖）。
+     2) .stage   —— 定尺寸的舞台：max-width/max-height 100% 撑满赛道，padding 给画面留白，
+                    margin:auto 保证比赛道小时居中。
+     3) img      —— 在舞台里做 max-width/max-height:100% 缩放。
+   ⚠ 不要用 flex + img{ margin:auto }：auto 外边距不能为负，图片一旦比视口宽
+     （宽度适应 / 放大 / 原始大小的宽图）就会贴到左边 —— 这个 bug 踩过。
+   ⚠ 也不要让 img 直接当 grid 子项、或让 .stage 用 height:100%：在自动行高里
+     max-height:% 会对着"内容撑出来的尺寸"算，等于失效（实测图片按原尺寸溢出 200px）。 */
+#viewer {
+  height: 100%;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: 100%;       /* 定死赛道高度 = 视口高度，里面的百分比才有参照 */
+  position: relative;
+  background: var(--canvas);
+}
+/* 舞台：被上面的 100% 赛道拉满（高度确定），所以 img 的 max-width/max-height:100%
+   能真正生效；画面留白放在舞台的 padding 上。
+   ⚠ 三层都试过、只有这一层能用，别随手改回去：
+     · img 直接当 grid 子项 → 自动行高，max-height:% 失效，图片按原尺寸溢出
+     · 舞台给 height:100% → 同上，百分比对着自动尺寸算，形成循环依赖
+     · 舞台用 margin:auto 代替赛道拉伸 → 尺寸变"内容驱动"，同样失效 */
+.stage {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+#viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+  background: var(--panel);
+}
+#viewer img.fit-width  { width: 100%; height: auto; max-width: none; max-height: none; }
+/* 高度适应：整页都在视口内（小图不被放大），窗口变化时自动跟随 */
+#viewer img.fit-height { max-height: 100%; width: auto; height: auto; }
+#viewer img.fit-original { width: auto; height: auto; max-width: none; max-height: none; }
+#viewer img.fit-percent { width: auto; height: auto; max-width: none; max-height: none; }
+
+/* ===== 顶部浮层：一行放完全部操作 =====
+   平时隐藏，鼠标移到窗口上沿才浮出；隐藏时不占版面、也不吃鼠标事件。 */
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;              /* 一行放得下：1024px 及以上都试过 */
+  overflow: hidden;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass);
+  color: var(--glass-text);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;           /* 隐藏时点画面不受影响 */
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+}
+.reader.ui-shown .topbar { opacity: 1; transform: none; pointer-events: auto; }
+.topbar .btn {
+  background: var(--glass-hi);
+  border-color: var(--glass-line);
+  color: var(--glass-text);
+  padding: 6px 10px;              /* 比默认略紧，保证一行放得下 */
+}
+.topbar .btn:hover { border-color: var(--accent); }
+.topbar .btn.active { border-color: var(--accent); color: var(--accent); }
+.topbar .btn:disabled { opacity: 0.3; }
+.topbar .btn:disabled:hover { border-color: var(--glass-line); }
+.topbar kbd {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: var(--glass-line);
+  color: var(--glass-muted);
+}
+.topbar .btn:hover kbd { color: var(--glass-text); }
+.topbar .btn-icon { min-width: 32px; padding: 6px 0; font-size: 15px; line-height: 1.2; }
+.topbar .btn-icon:has(kbd) { min-width: 0; padding: 6px 9px; gap: 6px; }
+
+.folder-name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+.page-info {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--glass-text);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  padding-right: 4px;
+  border-right: 1px solid var(--glass-line);   /* 与后面的操作区分开 */
+  margin-right: 2px;
+}
+/* 中间留白：上面一行状态文字、下面一条进度条 */
+.bar-slot {
+  flex: 1 1 120px;
+  min-width: 80px;
+  height: 36px;                   /* 与两侧按钮对齐：按钮约 33px + 上下各留一点 */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.auto-status {
+  font-size: 11px;
+  line-height: 13px;
+  height: 13px;
+  text-align: center;
+  color: var(--glass-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctrl { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--glass-muted); }
+.ctrl input[type="range"] { width: 110px; accent-color: var(--accent); }
+.ctrl-val { min-width: 46px; color: var(--glass-text); font-size: 12px; }
+
+#progressBar {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  display: block;
+}
+#progressBar::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--accent) 0%, var(--accent) var(--fill, 0%),
+    var(--border) var(--fill, 0%), var(--border) 100%);
+}
+#progressBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0;
+  height: 0;
+}
+#progressBar::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+#progressBar::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+/* ===== 设置浮层 / 图片列表：贴着屏幕底部弹出的抽屉 =====
+   从底部边缘升起，所以 bottom 只留 8px 的呼吸位（以前留 84px 给控制台，
+   看起来像浮在"中间偏下"）。动画也改成从下往上滑。 */
+.side-panel {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  z-index: 11;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 26px;
+  align-items: start;
+  padding: 12px 16px 14px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  color: var(--glass-text);
+  max-height: calc(100% - 90px);
+  overflow-y: auto;
+  animation: panel-up 0.2s ease-out;
+}
+@keyframes panel-up {
+  from { transform: translateY(28px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.side-panel[hidden] { display: none !important; }
+.panel-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+.panel-title { font-size: 12px; color: var(--glass-muted); letter-spacing: 0.04em; }
+.side-group { min-width: 0; }
+.side-title { font-size: 12px; color: var(--glass-muted); margin-bottom: 8px; }
+.side-row { margin-bottom: 8px; }
+.side-row:last-child { margin-bottom: 0; }
+.side-row .btn, .side-row select { width: 100%; text-align: left; }
+.side-panel .ctrl { justify-content: space-between; width: 100%; }
+.side-panel .ctrl input[type="range"] { flex: 1; width: auto; min-width: 0; }
+.panel-head .btn-icon { width: 32px; }
+
+/* ===== 图片列表浮层：同样是贴底弹出的抽屉 ===== */
+.thumb-panel {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  z-index: 11;
+  height: 300px;
+  max-height: calc(100% - 90px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  animation: panel-up 0.2s ease-out;
+  overflow: hidden;
+}
+.thumb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--glass-muted);
+  border-bottom: 1px solid var(--glass-line);
+  flex-shrink: 0;
+}
+.thumb-count { color: var(--glass-text); }
+.thumb-tip { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb-head .btn-icon { width: 28px; padding: 2px 0; font-size: 12px; }
+.thumb-grid {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.thumb-spacer { width: 1px; }
+.thumb-item {
+  position: absolute;
+  width: 72px;
+  height: 104px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--checker-b);
+  transition: border-color 0.15s;
+}
+.thumb-item:hover { border-color: var(--glass-muted); }
+.thumb-item.active { border-color: var(--accent); }
+.thumb-item.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--checker-b);
+  opacity: 0.6;
+}
+.thumb-canvas { display: block; width: 100%; height: 100%; }
+.thumb-idx {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+}
+.thumb-grid::-webkit-scrollbar { width: 10px; }
+.thumb-grid::-webkit-scrollbar-thumb { background: var(--glass-line); border-radius: 5px; }
+.thumb-grid::-webkit-scrollbar-thumb:hover { background: var(--glass-muted); }
+
+/* ===== 真全屏：连浮层一起收干净，只留图片 =====
+   ⚠ 这份清单必须与 app.js 的 enterTrueFull() 保持一致 */
+.reader.ui-hidden .topbar,
+.reader.ui-hidden .side-panel,
+.reader.ui-hidden .thumb-panel,
+.reader.ui-hidden .continue-bar { display: none !important; }
+.reader.ui-hidden #viewer { padding: 0; }
+.reader.ui-hidden.cursor-idle { cursor: none; }
+/* 真全屏时浏览器会给 :fullscreen 元素铺一层默认黑底，会把画布色盖掉 —— 这里显式接管，
+   保证「背景：白 / 黄 / 黑」在真全屏下同样生效。 */
+.reader:fullscreen,
+.reader:-webkit-full-screen { background: var(--canvas); margin: 0; width: 100%; height: 100%; }
+
+/* ===== 真全屏提示层（有操作时短暂出现，2.6 秒后淡出）===== */
+.fs-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%) translateY(6px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 92vw;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease-out, transform 0.22s ease-out;
+  z-index: 30;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.reader.ui-hidden .fs-hud { display: flex; }
+.fs-hud.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.fs-hud-main { display: flex; align-items: baseline; gap: 12px; }
+.fs-hud-state { font-size: 14px; font-weight: 600; }
+.fs-hud-state.playing { color: #7ee787; }
+.fs-hud-page { color: #d0d0d0; font-variant-numeric: tabular-nums; font-family: Consolas, Monaco, monospace; }
+.fs-hud-hint { font-size: 11px; color: #b9b9b9; }
+
+/* ===== 续读提示条 ===== */
+.continue-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  color: var(--glass-text);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+  z-index: 20;
+  font-size: 13px;
+}
+.continue-bar .btn { background: var(--glass-hi); border-color: var(--glass-line); color: var(--glass-text); }
+.continue-bar .btn:hover { border-color: var(--accent); }
+.continue-text { color: var(--glass-muted); }
+
+/* ===== 滚动条 ===== */
+#viewer::-webkit-scrollbar { width: 10px; height: 10px; }
+#viewer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+#viewer::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ===== 快捷键列表弹窗 ===== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  min-width: 340px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.modal-head .btn-icon { width: 32px; }
+.shortcut-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.shortcut-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.shortcut-table tr:last-child td { border-bottom: none; }
+.shortcut-table td:first-child {
+  color: var(--accent);
+  white-space: nowrap;
+  font-family: Consolas, Monaco, monospace;
+  width: 40%;
+}
+.modal-foot { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+/* ===== 版本号 ===== */
+.ver {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.empty-box .ver { color: var(--muted); opacity: 0.75; }
+.side-panel .ver { color: var(--glass-muted); }
+
+/* ===== 窄窗口 ===== */
+@media (max-width: 900px) {
+  .side-panel { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .side-panel { grid-template-columns: 1fr; max-height: calc(100% - 80px); }
+  .thumb-panel { height: 46vh; }
+  .topbar { gap: 6px; padding: 6px 9px; }
+  .topbar .btn { font-size: 12px; padding: 5px 8px; }
+  kbd { display: none; }              /* 手机上键盘没什么用，把位置还给按钮 */
+  .folder-name { display: none; }     /* 窄屏优先保住操作，卷名可以先不显示 */
+  .auto-status { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel, .thumb-panel { animation: none; }
+  .topbar { transition: none; }
+  .btn, .thumb-item, kbd { transition: none; }
+}
