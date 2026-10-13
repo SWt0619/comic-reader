@@ -1,0 +1,2385 @@
+<!DOCTYPE html>
+<!-- 本地漫画阅览器 · MIT License · Copyright (c) 2026 RJL0619 · 完整许可证见同目录 LICENSE -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本地漫画阅览器</title>
+  <style>
+/*!
+ * 本地漫画阅览器 · 样式
+ * MIT License · Copyright (c) 2026 RJL0619
+ * 完整许可证见同目录 LICENSE 文件。
+ *
+ * 版面原则（2026-10-13 第二版）：
+ *   画面铺满整个窗口，界面一律是「浮层」，谁也不占版面高度。
+ *   鼠标移到窗口上沿 / 下沿才浮出控制台与上下文条，移开约 2.6 秒自动收起。
+ *   图片列表与设置面板互斥（同一时间只开一个），都浮在画面之上，不把图片挤小。
+ */
+/* ===== 主题变量 ===== */
+:root {
+  --bg: #f5f5f7;
+  --chrome: #fbfbfc;        /* 浅色浮层用（只在空状态等少数地方用到） */
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #8a8f98;
+  --border: #e3e4e8;
+  --accent: #3f6fe0;
+  --accent-text: #ffffff;
+  --canvas: #ffffff;
+  --checker-a: #ffffff;
+  --checker-b: #e8e8ea;
+  /* 浮层专用的半透明"玻璃"色：浅色主题下用深色浮层压住画面，保证浮层上的字始终看得清 */
+  --glass: rgba(22, 24, 28, 0.84);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-text: #eef0f3;
+  --glass-muted: #a8aeb8;
+}
+[data-theme="yellow"] {
+  --bg: #f6edda;
+  --chrome: #fdf8ec;
+  --panel: #fdf8ec;
+  --text: #4a4432;
+  --muted: #9c937a;
+  --border: #e6dbbd;
+  --accent: #b0741a;
+  --accent-text: #ffffff;
+  --canvas: #f8efd5;
+  --checker-a: #f8efd5;
+  --checker-b: #efe3c4;
+  --glass: rgba(46, 38, 22, 0.86);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-text: #f4efe3;
+  --glass-muted: #bfb49a;
+}
+[data-theme="black"] {
+  --bg: #121212;
+  --chrome: #1a1a1a;
+  --panel: #1e1e1e;
+  --text: #e0e0e0;
+  --muted: #9a9a9a;
+  --border: #333333;
+  --accent: #6ea8ff;
+  --accent-text: #0f1419;
+  --canvas: #000000;
+  --checker-a: #232323;
+  --checker-b: #2c2c2c;
+  --glass: rgba(10, 10, 12, 0.86);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --glass-line: rgba(255, 255, 255, 0.16);
+  --glass-text: #e8e8e8;
+  --glass-muted: #9a9a9a;
+}
+
+/* ===== 基础 ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }   /* 界面全是浮层，页面本身不滚动 */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* ⚠ 背景要用画布色（--canvas）而不是 --bg：进真全屏后浏览器把视口之外涂的是
+     html 的背景色，若这里仍是浅灰，切到「黑」背景时屏幕外围就不跟着变黑（实测过）。 */
+  background: var(--canvas);
+  color: var(--text);
+  transition: background 0.25s, color 0.25s;
+}
+/* 等宽只用在"读表"的地方：页码、计时、计数 */
+.page-info, .ctrl-val, .thumb-count {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 按钮 ===== */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: 0.36; cursor: default; }
+.btn:disabled:hover { border-color: var(--border); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-size: 15px;
+  padding: 11px 24px;
+  border-radius: 10px;
+}
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.active { border-color: var(--accent); color: var(--accent); }
+.btn.select { appearance: none; -webkit-appearance: none; cursor: pointer; }
+/* 只放一个符号的方按钮：宽高一致，不因字宽变化而抖 */
+.btn-icon { padding: 6px 0; min-width: 32px; justify-content: center; gap: 0; }
+/* 图标按钮里还挂了键帽时，宽度交给内容（图标 + 键帽），否则键帽会被压扁 */
+.btn-icon:has(kbd) { width: auto; padding: 6px 10px; gap: 7px; }
+
+/* 键帽：把快捷键直接印在按钮上，这排按钮本身就是键盘地图 */
+kbd {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--chrome);
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn:hover kbd { color: var(--text); }
+.btn.active kbd { color: var(--accent); border-color: var(--accent); }
+
+/* ===== 浮层里的按钮：深色玻璃底 + 亮字，压在画面上也看得清 ===== */
+.side-panel .btn,
+.thumb-head .btn {
+  background: var(--glass-hi);
+  border-color: var(--glass-line);
+  color: var(--glass-text);
+}
+.side-panel .btn:hover,
+.thumb-head .btn:hover { border-color: var(--accent); }
+.side-panel .btn.active,
+.thumb-head .btn.active { border-color: var(--accent); color: var(--accent); }
+.side-panel kbd,
+.thumb-head kbd {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: var(--glass-line);
+  color: var(--glass-muted);
+}
+.side-panel .btn:hover kbd { color: var(--glass-text); }
+/* 浮层里的下拉框：原生下拉在深底上必须把文字色与选项色都设上 */
+.side-panel select.btn, .thumb-head select.btn {
+  background: var(--glass-hi);
+  color: var(--glass-text);
+}
+.side-panel select.btn option { background: #1c1e22; color: #eef0f3; }
+
+/* ===== 空状态 ===== */
+.empty-state {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.empty-box {
+  text-align: center;
+  padding: 44px 52px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  max-width: 460px;
+}
+.empty-box h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 10px;
+}
+.empty-box > p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+.empty-box .btn.primary { margin-top: 22px; }
+.empty-box .hint { font-size: 12px; margin-top: 20px; line-height: 1.8; color: var(--muted); }
+.recent {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.recent-title { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.recent-list { list-style: none; }
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--panel);
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+.recent-item:hover { border-color: var(--accent); }
+.recent-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.recent-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* ===== 阅读器：画面铺满，浮层绝对定位 ===== */
+/* ⚠ 画布色必须一路刷到 html/body：进真全屏后浏览器会把视口之外的区域涂成 html 的背景色，
+   只给 #viewer 上色的话，切到「黑」背景时屏幕外围还是浅灰（实测过）。 */
+html, body { background: var(--canvas); }
+.reader {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--canvas);
+}
+/* ⚠ 这一行是"图片看起来靠左"的根因：.reader 是 flex(row)，
+   .main-row 作为 flex 子项默认 flex:0 1 auto —— 它会被内容撑多少就是多少宽，
+   于是画面区只有图片那么宽（1920 窗口里只占 755px），图片在**那个窄条**里居中，
+   在整屏看来就贴在左边。必须让它吃满宽度。 */
+.main-row {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+/* 图片居中：三层结构，每层解决一个具体问题
+     1) #viewer  —— 可滚动容器：grid-template 用 "100%" 定死一条赛道，
+                    这样里面的百分比高度才有确定的参照（用 place-content/auto 行都会变成循环依赖）。
+     2) .stage   —— 定尺寸的舞台：max-width/max-height 100% 撑满赛道，padding 给画面留白，
+                    margin:auto 保证比赛道小时居中。
+     3) img      —— 在舞台里做 max-width/max-height:100% 缩放。
+   ⚠ 不要用 flex + img{ margin:auto }：auto 外边距不能为负，图片一旦比视口宽
+     （宽度适应 / 放大 / 原始大小的宽图）就会贴到左边 —— 这个 bug 踩过。
+   ⚠ 也不要让 img 直接当 grid 子项、或让 .stage 用 height:100%：在自动行高里
+     max-height:% 会对着"内容撑出来的尺寸"算，等于失效（实测图片按原尺寸溢出 200px）。 */
+#viewer {
+  height: 100%;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: 100%;       /* 定死赛道高度 = 视口高度，里面的百分比才有参照 */
+  position: relative;
+  background: var(--canvas);
+}
+/* 舞台：被上面的 100% 赛道拉满（高度确定），所以 img 的 max-width/max-height:100%
+   能真正生效；画面留白放在舞台的 padding 上。
+   ⚠ 三层都试过、只有这一层能用，别随手改回去：
+     · img 直接当 grid 子项 → 自动行高，max-height:% 失效，图片按原尺寸溢出
+     · 舞台给 height:100% → 同上，百分比对着自动尺寸算，形成循环依赖
+     · 舞台用 margin:auto 代替赛道拉伸 → 尺寸变"内容驱动"，同样失效 */
+.stage {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+#viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+  background: var(--panel);
+}
+#viewer img.fit-width  { width: 100%; height: auto; max-width: none; max-height: none; }
+/* 高度适应：整页都在视口内（小图不被放大），窗口变化时自动跟随 */
+#viewer img.fit-height { max-height: 100%; width: auto; height: auto; }
+#viewer img.fit-original { width: auto; height: auto; max-width: none; max-height: none; }
+#viewer img.fit-percent { width: auto; height: auto; max-width: none; max-height: none; }
+
+/* ===== 顶部浮层：一行放完全部操作 =====
+   平时隐藏，鼠标移到窗口上沿才浮出；隐藏时不占版面、也不吃鼠标事件。 */
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;              /* 一行放得下：1024px 及以上都试过 */
+  overflow: hidden;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass);
+  color: var(--glass-text);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;           /* 隐藏时点画面不受影响 */
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+}
+.reader.ui-shown .topbar { opacity: 1; transform: none; pointer-events: auto; }
+.topbar .btn {
+  background: var(--glass-hi);
+  border-color: var(--glass-line);
+  color: var(--glass-text);
+  padding: 6px 10px;              /* 比默认略紧，保证一行放得下 */
+}
+.topbar .btn:hover { border-color: var(--accent); }
+.topbar .btn.active { border-color: var(--accent); color: var(--accent); }
+.topbar .btn:disabled { opacity: 0.3; }
+.topbar .btn:disabled:hover { border-color: var(--glass-line); }
+.topbar kbd {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: var(--glass-line);
+  color: var(--glass-muted);
+}
+.topbar .btn:hover kbd { color: var(--glass-text); }
+.topbar .btn-icon { min-width: 32px; padding: 6px 0; font-size: 15px; line-height: 1.2; }
+.topbar .btn-icon:has(kbd) { min-width: 0; padding: 6px 9px; gap: 6px; }
+
+.folder-name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+.page-info {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--glass-text);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  padding-right: 4px;
+  border-right: 1px solid var(--glass-line);   /* 与后面的操作区分开 */
+  margin-right: 2px;
+}
+/* 中间留白：上面一行状态文字、下面一条进度条 */
+.bar-slot {
+  flex: 1 1 120px;
+  min-width: 80px;
+  height: 36px;                   /* 与两侧按钮对齐：按钮约 33px + 上下各留一点 */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.auto-status {
+  font-size: 11px;
+  line-height: 13px;
+  height: 13px;
+  text-align: center;
+  color: var(--glass-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctrl { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--glass-muted); }
+.ctrl input[type="range"] { width: 110px; accent-color: var(--accent); }
+.ctrl-val { min-width: 46px; color: var(--glass-text); font-size: 12px; }
+
+#progressBar {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  display: block;
+}
+#progressBar::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--accent) 0%, var(--accent) var(--fill, 0%),
+    var(--border) var(--fill, 0%), var(--border) 100%);
+}
+#progressBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0;
+  height: 0;
+}
+#progressBar::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+#progressBar::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+/* ===== 设置浮层 / 图片列表：贴着屏幕底部弹出的抽屉 =====
+   从底部边缘升起，所以 bottom 只留 8px 的呼吸位（以前留 84px 给控制台，
+   看起来像浮在"中间偏下"）。动画也改成从下往上滑。 */
+.side-panel {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  z-index: 11;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 26px;
+  align-items: start;
+  padding: 12px 16px 14px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  color: var(--glass-text);
+  max-height: calc(100% - 90px);
+  overflow-y: auto;
+  animation: panel-up 0.2s ease-out;
+}
+@keyframes panel-up {
+  from { transform: translateY(28px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.side-panel[hidden] { display: none !important; }
+.panel-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+.panel-title { font-size: 12px; color: var(--glass-muted); letter-spacing: 0.04em; }
+.side-group { min-width: 0; }
+.side-title { font-size: 12px; color: var(--glass-muted); margin-bottom: 8px; }
+.side-row { margin-bottom: 8px; }
+.side-row:last-child { margin-bottom: 0; }
+.side-row .btn, .side-row select { width: 100%; text-align: left; }
+.side-panel .ctrl { justify-content: space-between; width: 100%; }
+.side-panel .ctrl input[type="range"] { flex: 1; width: auto; min-width: 0; }
+.panel-head .btn-icon { width: 32px; }
+
+/* ===== 图片列表浮层：同样是贴底弹出的抽屉 ===== */
+.thumb-panel {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  z-index: 11;
+  height: 300px;
+  max-height: calc(100% - 90px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  animation: panel-up 0.2s ease-out;
+  overflow: hidden;
+}
+.thumb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--glass-muted);
+  border-bottom: 1px solid var(--glass-line);
+  flex-shrink: 0;
+}
+.thumb-count { color: var(--glass-text); }
+.thumb-tip { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb-head .btn-icon { width: 28px; padding: 2px 0; font-size: 12px; }
+.thumb-grid {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.thumb-spacer { width: 1px; }
+.thumb-item {
+  position: absolute;
+  width: 72px;
+  height: 104px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--checker-b);
+  transition: border-color 0.15s;
+}
+.thumb-item:hover { border-color: var(--glass-muted); }
+.thumb-item.active { border-color: var(--accent); }
+.thumb-item.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--checker-b);
+  opacity: 0.6;
+}
+.thumb-canvas { display: block; width: 100%; height: 100%; }
+.thumb-idx {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+}
+.thumb-grid::-webkit-scrollbar { width: 10px; }
+.thumb-grid::-webkit-scrollbar-thumb { background: var(--glass-line); border-radius: 5px; }
+.thumb-grid::-webkit-scrollbar-thumb:hover { background: var(--glass-muted); }
+
+/* ===== 真全屏：连浮层一起收干净，只留图片 =====
+   ⚠ 这份清单必须与 app.js 的 enterTrueFull() 保持一致 */
+.reader.ui-hidden .topbar,
+.reader.ui-hidden .side-panel,
+.reader.ui-hidden .thumb-panel,
+.reader.ui-hidden .continue-bar { display: none !important; }
+.reader.ui-hidden #viewer { padding: 0; }
+.reader.ui-hidden.cursor-idle { cursor: none; }
+/* 真全屏时浏览器会给 :fullscreen 元素铺一层默认黑底，会把画布色盖掉 —— 这里显式接管，
+   保证「背景：白 / 黄 / 黑」在真全屏下同样生效。 */
+.reader:fullscreen,
+.reader:-webkit-full-screen { background: var(--canvas); margin: 0; width: 100%; height: 100%; }
+
+/* ===== 真全屏提示层（有操作时短暂出现，2.6 秒后淡出）===== */
+.fs-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%) translateY(6px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 92vw;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease-out, transform 0.22s ease-out;
+  z-index: 30;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.reader.ui-hidden .fs-hud { display: flex; }
+.fs-hud.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.fs-hud-main { display: flex; align-items: baseline; gap: 12px; }
+.fs-hud-state { font-size: 14px; font-weight: 600; }
+.fs-hud-state.playing { color: #7ee787; }
+.fs-hud-page { color: #d0d0d0; font-variant-numeric: tabular-nums; font-family: Consolas, Monaco, monospace; }
+.fs-hud-hint { font-size: 11px; color: #b9b9b9; }
+
+/* ===== 续读提示条 ===== */
+.continue-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  color: var(--glass-text);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+  z-index: 20;
+  font-size: 13px;
+}
+.continue-bar .btn { background: var(--glass-hi); border-color: var(--glass-line); color: var(--glass-text); }
+.continue-bar .btn:hover { border-color: var(--accent); }
+.continue-text { color: var(--glass-muted); }
+
+/* ===== 滚动条 ===== */
+#viewer::-webkit-scrollbar { width: 10px; height: 10px; }
+#viewer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+#viewer::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ===== 快捷键列表弹窗 ===== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  min-width: 340px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.modal-head .btn-icon { width: 32px; }
+.shortcut-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.shortcut-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.shortcut-table tr:last-child td { border-bottom: none; }
+.shortcut-table td:first-child {
+  color: var(--accent);
+  white-space: nowrap;
+  font-family: Consolas, Monaco, monospace;
+  width: 40%;
+}
+.modal-foot { margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+/* ===== 版本号 ===== */
+.ver {
+  font-family: Consolas, "Cascadia Mono", Monaco, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.empty-box .ver { color: var(--muted); opacity: 0.75; }
+.side-panel .ver { color: var(--glass-muted); }
+
+/* ===== 窄窗口 ===== */
+@media (max-width: 900px) {
+  .side-panel { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .side-panel { grid-template-columns: 1fr; max-height: calc(100% - 80px); }
+  .thumb-panel { height: 46vh; }
+  .topbar { gap: 6px; padding: 6px 9px; }
+  .topbar .btn { font-size: 12px; padding: 5px 8px; }
+  kbd { display: none; }              /* 手机上键盘没什么用，把位置还给按钮 */
+  .folder-name { display: none; }     /* 窄屏优先保住操作，卷名可以先不显示 */
+  .auto-status { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel, .thumb-panel { animation: none; }
+  .topbar { transition: none; }
+  .btn, .thumb-item, kbd { transition: none; }
+}
+  </style>
+</head>
+<body>
+
+  <!-- 空状态：尚未导入文件夹 -->
+  <div id="emptyState" class="empty-state">
+    <div class="empty-box">
+      <h1>本地漫画阅览器</h1>
+      <p>导入一个装着图片的文件夹，就能一直翻着读下去</p>
+      <button id="openBtn" class="btn primary">导入文件夹</button>
+      <p class="hint">支持 jpg / jpeg / png / webp / gif / bmp<br>请用 Chrome 或 Edge 打开本页面
+        <br><span id="appVersion" class="ver"></span></p>
+      <div id="recentBox" class="recent" style="display:none">
+        <div class="recent-title">最近打开</div>
+        <ul id="recentList" class="recent-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 阅读器：画面铺满整窗，界面全部是浮层（鼠标移到上/下边缘才浮出来） -->
+  <div id="reader" class="reader" style="display:none">
+
+    <!-- 顶部浮层：一行放完全部操作。平时隐藏，鼠标移到窗口上沿才浮出 -->
+    <header class="topbar" id="ctxbar">
+      <button id="openBtn2" class="btn btn-icon" title="换一个文件夹">📂</button>
+      <span id="folderName" class="folder-name">-</span>
+      <span id="pageInfo" class="page-info">-</span>
+
+      <button id="prevBtn" class="btn btn-icon" title="上一页 (←)">‹</button>
+      <button id="nextBtn" class="btn btn-icon" title="下一页 (→)">›</button>
+      <button id="autoBtn" class="btn" title="自动翻页 / 暂停 (P)">▶ 自动翻页<kbd>P</kbd></button>
+      <button id="randomBtn" class="btn" title="随机顺序：只换顺序，不会自动播放 (R)">随机顺序<kbd>R</kbd></button>
+
+      <span class="bar-slot">
+        <span id="autoStatus" class="auto-status"></span>
+        <input type="range" id="progressBar" min="0" max="0" value="0" step="1">
+      </span>
+
+      <button id="listBtn2" class="btn" title="图片列表 (T)">图片列表<kbd>T</kbd></button>
+      <button id="themeBtn2" class="btn" title="阅读背景：白 / 黄(护眼) / 黑">背景：白</button>
+      <button id="sidebarBtn" class="btn" title="设置面板 开 / 关 (S)">设置<kbd>S</kbd></button>
+      <button id="helpBtn" class="btn" title="快捷键列表 (?)">快捷键<kbd>?</kbd></button>
+      <button id="fullBtn2" class="btn btn-icon" title="真全屏：隐藏全部界面，只留图片（F，Esc 退出）">⛶<kbd>F</kbd></button>
+    </header>
+
+    <div class="main-row">
+
+      <div id="viewer">
+        <div class="stage">
+          <img id="mainImg" alt="" draggable="false">
+        </div>
+      </div>
+
+      <!-- 设置浮层：按 S 或点「设置」才浮出，不占版面 -->
+      <aside id="sidebar" class="side-panel" hidden>
+        <div class="panel-head">
+          <span class="panel-title">设置 <span id="appVersion2" class="ver"></span></span>
+          <button id="sidebarClose" class="btn btn-icon" title="收起设置 (S)">✕</button>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">显示</div>
+          <div class="side-row">
+            <button id="themeBtn" class="btn" title="阅读背景：白 / 黄(护眼) / 黑">背景：白</button>
+          </div>
+          <div class="side-row">
+            <select id="fitSelect" class="btn select" title="图片适配模式">
+              <option value="height" selected>高度适应</option>
+              <option value="width">宽度适应</option>
+              <option value="original">原始大小</option>
+              <option value="percent">百分比缩放</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <button id="zoomBtn" class="btn" title="点击切换缩放比例（+ / - 键微调）">100%</button>
+          </div>
+          <div class="side-row">
+            <button id="fullBtn" class="btn" title="真全屏：隐藏全部界面，只留图片（F，Esc 退出）"><span id="fullBtnLabel">真全屏</span><kbd>F</kbd></button>
+          </div>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">自动翻页</div>
+          <div class="side-row">
+            <label class="ctrl">翻页间隔
+              <input type="range" id="interval" min="1" max="60" step="1" value="5">
+              <span id="intervalVal" class="ctrl-val">5 秒</span>
+            </label>
+          </div>
+          <div class="side-row">
+            <select id="effectSelect" class="btn select" title="翻页特效">
+              <option value="fade" selected>淡入淡出</option>
+              <option value="slide">滑动翻页</option>
+              <option value="zoom">缩放淡入</option>
+              <option value="none">无</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <label class="ctrl" title="特效动画播放速度">
+              <span>速度</span>
+              <input type="range" id="animSpeed" min="100" max="1500" step="50" value="400">
+              <span id="animSpeedVal" class="ctrl-val">400ms</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">浏览</div>
+          <div class="side-row">
+            <select id="sortSelect" class="btn select" title="图片排序方式">
+              <option value="name-asc" selected>文件名 ↑</option>
+              <option value="name-desc">文件名 ↓</option>
+              <option value="time-desc">时间 新→旧</option>
+              <option value="time-asc">时间 旧→新</option>
+              <option value="size-desc">大小 大→小</option>
+              <option value="size-asc">大小 小→大</option>
+            </select>
+          </div>
+          <div class="side-row">
+            <button id="listBtn" class="btn" title="图片列表（T）">图片列表<kbd>T</kbd></button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 图片列表浮层（缩略图网格，虚拟滚动）：与设置互斥，同一时间只开一个 -->
+      <div id="thumbPanel" class="thumb-panel" style="display:none">
+        <div class="thumb-head">
+          <span id="thumbCount" class="thumb-count">图片列表</span>
+          <span class="thumb-tip">滚轮滚动 · 点缩略图跳页 · 按 T 关闭</span>
+          <button id="thumbClose" class="btn btn-icon" title="关闭列表 (T)">✕</button>
+        </div>
+        <div id="thumbGrid" class="thumb-grid">
+          <div id="thumbSpacer" class="thumb-spacer"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 续读提示条 -->
+    <div id="continueBar" class="continue-bar" style="display:none">
+      <span id="continueText" class="continue-text"></span>
+      <button id="continueBtn" class="btn">继续阅读</button>
+      <button id="dismissBtn" class="btn btn-icon">✕</button>
+    </div>
+
+    <!-- 真全屏提示层：只在真全屏下、且刚有操作时短暂出现，随后自动淡出 -->
+    <div id="fsHud" class="fs-hud">
+      <div class="fs-hud-main">
+        <span id="fsHudState" class="fs-hud-state">▶ 已暂停</span>
+        <span id="fsHudPage" class="fs-hud-page">1 / 1</span>
+      </div>
+      <div id="fsHudHint" class="fs-hud-hint">点画面中间 播放 / 暂停 · 点左右两侧翻页 · P 播放暂停 · Esc 退出全屏</div>
+    </div>
+
+  </div>
+
+  <input type="file" id="fileInput" webkitdirectory directory multiple style="display:none">
+
+  <!-- 快捷键列表弹窗 -->
+  <div id="helpModal" class="modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span>快捷键</span>
+        <button id="helpClose" class="btn btn-icon" title="关闭">✕</button>
+      </div>
+      <table class="shortcut-table">
+        <tr><td>← / → / 空格</td><td>上一页 / 下一页</td></tr>
+        <tr><td>P / Enter</td><td>自动翻页 开始 / 暂停</td></tr>
+        <tr><td>R</td><td>随机顺序 开 / 关（只换顺序，不会自动播放）</td></tr>
+        <tr><td>T</td><td>图片列表 开 / 关</td></tr>
+        <tr><td>S</td><td>设置面板 开 / 关</td></tr>
+        <tr><td>F</td><td>真全屏（隐藏所有界面，只显示图片；Esc 退出）</td></tr>
+        <tr><td>+ / -</td><td>放大 / 缩小</td></tr>
+        <tr><td>W</td><td>宽度适应</td></tr>
+        <tr><td>H</td><td>高度适应（默认）</td></tr>
+        <tr><td>O</td><td>原始大小</td></tr>
+        <tr><td>0</td><td>恢复高度适应</td></tr>
+      </table>
+      <div class="modal-foot">
+        鼠标：点击图片左 / 右半区翻页，中间区域开始 / 暂停自动翻页；Ctrl + 滚轮 缩放。<br>
+        随机顺序与自动翻页是两个独立开关：先点「随机顺序」打乱，再点「自动翻页」才会连续播放。<br>
+        控制台上每个按钮旁边的小键帽就是它的快捷键。<br>
+        真全屏（F）下没有常驻按钮：动一下鼠标 / 点一下画面，画面底部会浮出提示，
+        显示当前「自动翻页中 · 第几页」，2.6 秒后自动淡出。
+      </div>
+    </div>
+  </div>
+
+  <script>
+/*!
+ * 本地漫画阅览器 —— 一个纯本地的漫画 / 图片浏览器
+ * MIT License · Copyright (c) 2026 RJL0619
+ * 完整许可证见同目录 LICENSE 文件。
+ */
+(function () {
+  'use strict';
+
+  /* ===== 常量 ===== */
+  var APP_VERSION = 'v1.0.1';                 // 发版时改这里一处即可，界面与文档都引用它
+  var IMAGE_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'];
+  var ZOOM_STEPS = [25, 50, 75, 100, 150, 200, 300, 400];
+  var THEME_ORDER = ['white', 'yellow', 'black'];
+  var THEME_LABEL = { white: '白', yellow: '黄(护眼)', black: '黑' };
+  var FIT_LABEL = { width: '宽度适应', height: '高度适应', original: '原始大小', percent: '百分比缩放' };
+  var RECENTS_KEY = 'comicReader:recents';
+  var MAX_RECENTS = 8;
+  var DB_NAME = 'comicReader';
+  var DB_STORE = 'handles';
+
+  var DEFAULT_FIT = 'height';                 // 默认显示模式：高度适应
+  var FIT_FLAG_KEY = 'comicReader:fitDefault'; // 首次运行把默认改成高度适应（忽略旧存档里的显示模式）
+  var MAIN_CACHE_MAX = 32;                    // 大图 objectURL 缓存条数
+  var FS_HUD_HOT_H = 96;                      // 真全屏：鼠标进到「距画面底部 96px」以内才浮出提示条
+  var FS_HUD_OUT_H = 24;                      // 再往外移这么多才收起（滞回，避免贴着边界抖动）
+  var UI_HOT_TOP = 84;                        // 界面浮层：鼠标进到距窗口上沿 84px 以内才浮出
+  var UI_IDLE_MS = 2600;                      // 鼠标移开热区后，界面浮层多久自动收起
+
+  /* ===== 界面浮层：平时全隐藏，鼠标到窗口上沿才出现 ===== */
+  var uiTimer = null;                         // 自动收起的定时器
+  var showingUI = false;                      // 当前是否处于"浮层已浮出"状态
+  var deckHover = false;                      // 鼠标是否停在浮层上（停着就不收）
+  var uiHotTop = false;                       // 鼠标是否在顶部热区里
+
+  /* ===== 状态 ===== */
+  var state = {
+    files: [],          // [{ file, name, path }]
+    order: [],          // 显示顺序（随机模式下被打乱）
+    index: 0,
+    normalIndex: 0,
+    randomMode: false,
+    folderName: '',
+    autoFlip: false,
+    timer: null,
+    intervalSec: 5,
+    theme: 'white',
+    fitMode: DEFAULT_FIT,   // width | height | original | percent
+    zoomPercent: 100,
+    effect: 'fade',         // fade | slide | zoom | none
+    dir: 'none',            // forward | backward | none（翻页方向，供滑动特效使用）
+    sortMode: 'name-asc',
+    animSpeed: 400,
+    trueFull: false         // 真全屏（隐藏全部界面）
+  };
+
+  /* ===== DOM 引用 ===== */
+  var $ = function (sel) { return document.querySelector(sel); };
+  var elEmpty = $('#emptyState');
+  var elReader = $('#reader');
+  var elViewer = $('#viewer');
+  var elImg = $('#mainImg');
+  var elPageInfo = $('#pageInfo');
+  var elFolderName = $('#folderName');
+  var elFileInput = $('#fileInput');
+  var elAutoBtn = $('#autoBtn');
+  var elInterval = $('#interval');
+  var elIntervalVal = $('#intervalVal');
+  // 控制台与设置面板各有一个「背景」按钮，两边要保持同步（控制台那个是 2026-10 重构新加的入口）
+  var elThemeBtns = Array.prototype.slice.call(document.querySelectorAll('#themeBtn, #themeBtn2'));
+  var elFitSelect = $('#fitSelect');
+  var elZoomBtn = $('#zoomBtn');
+  var elEffectSelect = $('#effectSelect');
+  var elSortSelect = $('#sortSelect');
+  var elAnimSpeed = $('#animSpeed');
+  var elAnimSpeedVal = $('#animSpeedVal');
+  var elSidebarBtn = $('#sidebarBtn');
+  var elSidePanel = $('#sidebar');
+  var elSidebarClose = $('#sidebarClose');
+  var elHelpBtn = $('#helpBtn');
+  var elHelpModal = $('#helpModal');
+  var elHelpClose = $('#helpClose');
+  var elPrevBtn = $('#prevBtn');
+  var elNextBtn = $('#nextBtn');
+  // 真全屏按钮现在有三处入口（控制台 / 设置面板 / 空状态都没有）：都是 #fullBtn / #fullBtn2，
+  // 文案分两段（图标与文字各一个 span），所以更新时只改 span，不能整个 textContent —— 否则会把键帽 kbd 抹掉
+  var elFullBtns = Array.prototype.slice.call(document.querySelectorAll('#fullBtn, #fullBtn2'));
+  var elFullPanelLabel = $('#fullBtnLabel');
+  var elStatus = $('#autoStatus');
+  var elContinueBar = $('#continueBar');
+  var elContinueText = $('#continueText');
+  var elContinueBtn = $('#continueBtn');
+  var elDismissBtn = $('#dismissBtn');
+  var elProgress = $('#progressBar');
+  var elRandomBtn = $('#randomBtn');
+  // 控制台与设置面板各有一个「图片列表」按钮
+  var elListBtns = Array.prototype.slice.call(document.querySelectorAll('#listBtn, #listBtn2'));
+  var elThumbPanel = $('#thumbPanel');
+  var elThumbGrid = $('#thumbGrid');
+  var elThumbSpacer = $('#thumbSpacer');
+  var elThumbCount = $('#thumbCount');
+  var elThumbClose = $('#thumbClose');
+  var elFsHud = $('#fsHud');
+  var elFsHudState = $('#fsHudState');
+  var elFsHudPage = $('#fsHudPage');
+  var elFsHudHint = $('#fsHudHint');
+  var elTopbar = $('#ctxbar');     // 顶部那一行浮层（里面是上下文 + 全部操作）
+
+  /* ===== 大图 objectURL 缓存（LRU）===== */
+  var urlCache = new Map();
+  function getUrl(entry) {
+    var key = entry.path;
+    if (urlCache.has(key)) {
+      var u = urlCache.get(key);
+      urlCache.delete(key);      // 命中即刷新为最近使用
+      urlCache.set(key, u);
+      return u;
+    }
+    if (urlCache.size >= MAIN_CACHE_MAX) {
+      var oldKey = urlCache.keys().next().value;
+      URL.revokeObjectURL(urlCache.get(oldKey));
+      urlCache.delete(oldKey);
+    }
+    var url = URL.createObjectURL(entry.file);
+    urlCache.set(key, url);
+    return url;
+  }
+  function clearCache() {
+    urlCache.forEach(function (url) { URL.revokeObjectURL(url); });
+    urlCache.clear();
+    preloadImgs.clear();
+  }
+
+  /* 预加载：真正把邻近页解码进浏览器缓存（只创建 objectURL 是不会解码的） */
+  var preloadImgs = new Map();
+  function preloadOne(entry) {
+    var key = entry.path;
+    if (preloadImgs.has(key)) return;
+    var im = new Image();
+    im.decoding = 'async';
+    im.src = getUrl(entry);
+    preloadImgs.set(key, im);
+    while (preloadImgs.size > 12) {
+      var k = preloadImgs.keys().next().value;
+      preloadImgs.delete(k);
+    }
+  }
+
+  /* ===== 文件扫描与排序 ===== */
+  function filterAndSort(entries) {
+    var filtered = [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var dot = e.name.lastIndexOf('.');
+      var ext = dot >= 0 ? e.name.slice(dot + 1).toLowerCase() : '';
+      if (IMAGE_EXT.indexOf(ext) === -1) continue;
+      filtered.push(e);
+    }
+    filtered.sort(cmpNameAsc);
+    return filtered;
+  }
+
+  /* ===== 排序方式 ===== */
+  var collator = null;
+  try {
+    if (window.Intl && Intl.Collator) {
+      collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    }
+  } catch (e) { collator = null; }
+  function cmpText(a, b) {
+    if (collator) return collator.compare(a, b);
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+  function cmpNameAsc(x, y) {
+    var c = cmpText(x.name, y.name);
+    if (c !== 0) return c;
+    return cmpText(x.path, y.path);
+  }
+  function cmpNameDesc(x, y) { return cmpNameAsc(y, x); }
+  function sortFiles(entries, mode) {
+    var a = entries.slice();
+    var cmp;
+    switch (mode) {
+      case 'name-desc': cmp = cmpNameDesc; break;
+      case 'time-desc': cmp = function (x, y) { return (y.file.lastModified || 0) - (x.file.lastModified || 0); }; break;
+      case 'time-asc': cmp = function (x, y) { return (x.file.lastModified || 0) - (y.file.lastModified || 0); }; break;
+      case 'size-desc': cmp = function (x, y) { return (y.file.size || 0) - (x.file.size || 0); }; break;
+      case 'size-asc': cmp = function (x, y) { return (x.file.size || 0) - (y.file.size || 0); }; break;
+      default: cmp = cmpNameAsc; // name-asc
+    }
+    a.sort(cmp);
+    return a;
+  }
+  function scanFolder(fileList) {
+    var entries = [];
+    for (var i = 0; i < fileList.length; i++) {
+      var file = fileList[i];
+      var path = file.webkitRelativePath || file.name;
+      entries.push({ file: file, name: file.name, path: path });
+    }
+    return filterAndSort(entries);
+  }
+  async function listImagesFromHandle(dirHandle) {
+    var out = [];
+    async function walk(dir, prefix) {
+      for await (var entry of dir.values()) {
+        var rel = prefix ? prefix + '/' + entry.name : entry.name;
+        if (entry.kind === 'directory') {
+          await walk(entry, rel);
+        } else {
+          var file = await entry.getFile();
+          out.push({ file: file, name: entry.name, path: rel });
+        }
+      }
+    }
+    await walk(dirHandle, '');
+    return filterAndSort(out);
+  }
+
+  function openFolder(fileList) {
+    var entries = scanFolder(fileList);
+    var folderName = entries.length ? entries[0].path.split('/')[0] : '';
+    openFromEntries(entries, folderName, null);
+  }
+
+  async function importFolder() {
+    if (window.showDirectoryPicker) {
+      try {
+        var dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        var entries = await listImagesFromHandle(dirHandle);
+        openFromEntries(entries, dirHandle.name, dirHandle);
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return; // 用户取消选择
+        // 其他异常降级到传统文件选择
+      }
+    }
+    elFileInput.click();
+  }
+
+  function openFromEntries(entries, folderName, handle) {
+    if (entries.length === 0) {
+      alert('所选文件夹中没有找到图片文件。');
+      return;
+    }
+    stopAuto();
+    clearCache();
+    exitTrueFull();
+    state.files = entries;
+    state.folderName = folderName;
+    state.order = makeOrder();
+    state.randomMode = false;
+    state.normalIndex = 0;
+    state.index = 0;
+
+    elFolderName.textContent = folderName;
+    elFolderName.title = folderName;
+    elReader.style.display = 'flex';
+    elEmpty.style.display = 'none';
+    elRandomBtn.classList.remove('active');
+
+    var saved = loadProgress();
+    if (saved) {
+      applySavedSettings(saved);
+      // 恢复随机模式：沿用上次的随机顺序与位置
+      if (saved.randomMode && isValidOrder(saved.order, entries.length)) {
+        state.randomMode = true;
+        state.order = saved.order.slice();
+        rebuildOrderPos();          // 恢复随机顺序后必须重建索引表，否则缩略图点击会跳错页
+        state.normalIndex = saved.normalIndex || 0;
+        state.index = Math.max(0, Math.min(saved.index || 0, entries.length - 1));
+        elRandomBtn.classList.add('active');
+      } else {
+        state.normalIndex = saved.normalIndex || 0;
+        state.index = 0;
+      }
+      var resumeAt = state.randomMode ? state.index : (state.normalIndex || 0);
+      if (resumeAt > 0 && resumeAt < entries.length) {
+        showContinueBar(resumeAt);
+      }
+    }
+    resetThumbs();
+    render();
+    addRecent(folderName, handle);
+  }
+
+  /* ===== 显示顺序与随机 ===== */
+  function makeOrder() {
+    var arr = [];
+    for (var i = 0; i < state.files.length; i++) arr.push(i);
+    return arr;
+  }
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function isValidOrder(arr, n) {
+    if (!Array.isArray(arr) || arr.length !== n) return false;
+    var seen = {};
+    for (var i = 0; i < arr.length; i++) {
+      var v = arr[i];
+      if (v !== (v | 0) || v < 0 || v >= n || seen[v]) return false;
+      seen[v] = true;
+    }
+    return true;
+  }
+
+  /* 文件下标 → 显示位置（随机模式下与下标不同），O(1) */
+  var orderPos = null;
+  function rebuildOrderPos() {
+    orderPos = new Int32Array(state.files.length);
+    for (var p = 0; p < state.order.length; p++) orderPos[state.order[p]] = p;
+  }
+  function posOfFile(fileIdx) {
+    if (orderPos && fileIdx >= 0 && fileIdx < orderPos.length) return orderPos[fileIdx];
+    return fileIdx;
+  }
+
+  /* 随机顺序：只打乱顺序，不自动开始播放（与自动翻页互相独立） */
+  function enableRandom() {
+    if (state.files.length === 0) return;
+    state.normalIndex = state.randomMode ? state.normalIndex : state.index;
+    state.randomMode = true;
+    state.order = shuffle(makeOrder());
+    rebuildOrderPos();
+    state.index = 0;
+    elRandomBtn.classList.add('active');
+    render();
+  }
+  function disableRandom() {
+    if (!state.randomMode) return;
+    state.randomMode = false;
+    state.order = makeOrder();
+    rebuildOrderPos();
+    state.index = Math.max(0, Math.min(state.normalIndex, state.files.length - 1));
+    elRandomBtn.classList.remove('active');
+    render();
+  }
+  function toggleRandom() {
+    if (state.randomMode) disableRandom(); else enableRandom();
+  }
+  function setSort(mode) {
+    if (state.files.length === 0) return;
+    state.sortMode = mode;
+    elSortSelect.value = mode;
+    stopAuto();
+    state.randomMode = false;
+    elRandomBtn.classList.remove('active');
+    state.files = sortFiles(state.files, mode);
+    state.order = makeOrder();
+    state.normalIndex = 0;
+    state.index = 0;
+    resetThumbs();
+    render();
+    saveProgress();
+  }
+
+  /* 首次运行：忽略旧存档里的显示模式，把默认改成「高度适应」 */
+  var fitDefaultFresh = true;
+  try {
+    fitDefaultFresh = localStorage.getItem(FIT_FLAG_KEY) !== '1';
+    localStorage.setItem(FIT_FLAG_KEY, '1');
+  } catch (e) { fitDefaultFresh = false; }
+
+  function applySavedSettings(saved) {
+    // 兼容旧数据：day/night 迁移到 white/black
+    var bg = saved.bgMode;
+    if (!bg) bg = saved.theme === 'night' ? 'black' : (saved.theme === 'yellow' ? 'yellow' : 'white');
+    if (THEME_ORDER.indexOf(bg) !== -1) setTheme(bg);
+    if (saved.intervalSec) setIntervalSec(saved.intervalSec);
+    if (saved.fitMode && !fitDefaultFresh) setFitMode(saved.fitMode);
+    if (saved.zoomPercent) setZoomPercent(saved.zoomPercent);
+    if (saved.effect) setEffect(saved.effect);
+    if (saved.sortMode) setSort(saved.sortMode);
+    if (saved.animSpeed) setAnimSpeed(saved.animSpeed);
+  }
+
+  /* ===== 渲染 ===== */
+  function render() {
+    if (state.files.length === 0) return;
+    var entry = state.files[state.order[state.index]];
+    elImg.onload = function () {
+      applyFitToImg();
+      playTransition();
+    };
+    elImg.src = getUrl(entry);
+    elImg.alt = entry.name;
+    elPageInfo.textContent = state.randomMode
+      ? '随机 ' + (state.index + 1) + ' / ' + state.files.length
+      : (state.index + 1) + ' / ' + state.files.length;
+    preload();
+    updateNav();
+    updateProgress();
+    updateActiveThumb();
+    updateStatusBar();
+    if (state.trueFull && elFsHud && elFsHud.classList.contains('show')) updateFsHud();
+    saveProgress();
+  }
+
+  function preload() {
+    for (var d = 1; d <= 3; d++) {
+      if (state.index + d < state.files.length) preloadOne(state.files[state.order[state.index + d]]);
+      if (state.index - d >= 0) preloadOne(state.files[state.order[state.index - d]]);
+    }
+  }
+
+  /* ===== 阅读进度条 ===== */
+  function updateProgress() {
+    if (state.files.length === 0) return;
+    elProgress.max = state.files.length - 1;
+    elProgress.value = state.index;
+    var pct = state.files.length > 1 ? (state.index / (state.files.length - 1)) * 100 : 0;
+    elProgress.style.setProperty('--fill', pct + '%');
+  }
+
+  /* ===== 状态栏 ===== */
+  function updateStatusBar() {
+    if (state.files.length === 0) { elStatus.textContent = ''; return; }
+    if (state.autoFlip) {
+      elStatus.textContent = '自动翻页中 · 每 ' + state.intervalSec + ' 秒翻一页';
+      return;
+    }
+    var parts = [];
+    parts.push(state.randomMode ? '随机顺序' : '顺序播放');
+    parts.push(FIT_LABEL[state.fitMode] || '');
+    if (state.fitMode === 'percent') parts.push(state.zoomPercent + '%');
+    parts.push('共 ' + state.files.length + ' 张');
+    if (state.trueFull) parts.push('真全屏中 · Esc 退出');
+    elStatus.textContent = parts.join(' · ');
+  }
+
+  /* ===================================================================
+     图片列表（缩略图）
+     - 虚拟网格：池化复用固定数量的 DOM 节点，滚动不再重建整棵子树
+     - 真缩略图：createImageBitmap 按宽度缩放后画到 canvas，避免每张都解码原图
+     - 缓存按「文件」记（排序/随机不影响），带 LRU 上限
+     =================================================================== */
+  var TH = {
+    cellW: 80, cellH: 112,      // 网格单元
+    thumbW: 72, thumbH: 104,    // 缩略图显示尺寸
+    padX: 8, padY: 6,
+    bufferRows: 1,
+    dpr: 2,                     // canvas 像素密度
+    workers: 4                  // 同时解码的缩略图数量
+  };
+  var THUMB_CACHE_MAX = 150;
+
+  var thumbBmp = new Map();      // key -> { state:0/1/2/3, src, url, cbs }
+  var thumbOrder = [];           // LRU
+  var thumbPool = [];            // 复用的 DOM 节点
+  var thumbLayout = { cols: 1, rows: 0, totalH: 0 };
+  var thumbQueue = [];
+  var thumbActive = 0;
+  var thumbGen = 0;              // 换文件夹 / 排序时 +1，用来丢弃过期结果
+  var thumbRaf = null;
+  var thumbWanted = null;        // 最近一帧真正需要的缩略图（快速滚动时丢弃已滚过头的任务）
+  var lastThumbTouch = 0;        // 用户手动滚动列表的时间，用于避免翻页时把列表抢回去
+
+  function keyOf(entry) {
+    var f = entry.file;
+    return entry.path + '|' + f.size + '|' + (f.lastModified || 0);
+  }
+
+  function clearThumbBmp() {
+    thumbGen++;
+    thumbQueue.length = 0;
+    thumbBmp.forEach(function (rec) { releaseThumb(rec); });
+    thumbBmp.clear();
+    thumbOrder.length = 0;
+  }
+  function releaseThumb(rec) {
+    if (!rec) return;
+    rec.cbs = [];
+    if (rec.src && typeof rec.src.close === 'function') { try { rec.src.close(); } catch (e) {} }
+    if (rec.url) { try { URL.revokeObjectURL(rec.url); } catch (e) {} }
+    rec.src = null; rec.url = null;
+  }
+  function trimThumbCache() {
+    while (thumbOrder.length > THUMB_CACHE_MAX) {
+      var key = thumbOrder.shift();
+      var rec = thumbBmp.get(key);
+      if (rec && rec.state === 2) { releaseThumb(rec); thumbBmp.delete(key); }
+    }
+  }
+
+  function loadThumb(entry) {
+    return new Promise(function (resolve, reject) {
+      function viaImg() {
+        var url = URL.createObjectURL(entry.file);
+        var im = new Image();
+        im.decoding = 'async';
+        im.onload = function () {
+          if (!im.naturalWidth) { URL.revokeObjectURL(url); reject(new Error('empty image')); return; }
+          resolve({ src: im, url: url });
+        };
+        im.onerror = function () { URL.revokeObjectURL(url); reject(new Error('image error')); };
+        im.src = url;
+      }
+      if (window.createImageBitmap) {
+        var p = null;
+        try {
+          p = createImageBitmap(entry.file, { resizeWidth: TH.thumbW * TH.dpr, resizeQuality: 'medium' });
+        } catch (e) { p = null; }
+        if (p && typeof p.then === 'function') {
+          p.then(function (bmp) { resolve({ src: bmp, url: null }); }, viaImg);
+          return;
+        }
+      }
+      viaImg();
+    });
+  }
+
+  function pumpThumbQueue() {
+    while (thumbActive < TH.workers && thumbQueue.length) {
+      var key = thumbQueue.shift();
+      var rec = thumbBmp.get(key);
+      if (!rec || rec.state !== 1) continue;
+      // 快速滚动时把已经滚过头的任务丢掉，稍后需要时会重新入队
+      if (thumbQueue.length > 40 && thumbWanted && !thumbWanted.has(key)) {
+        rec.state = 0;
+        continue;
+      }
+      (function (myKey, myRec, gen) {
+        thumbActive++;
+        loadThumb(myRec.entry).then(function (res) {
+          thumbActive--;
+          if (gen !== thumbGen) { releaseThumb({ src: res.src, url: res.url }); pumpThumbQueue(); return; }
+          myRec.state = 2;
+          myRec.src = res.src;
+          myRec.url = res.url;
+          thumbOrder.push(myKey);
+          var cbs = myRec.cbs; myRec.cbs = [];
+          for (var i = 0; i < cbs.length; i++) { try { cbs[i](myRec); } catch (e) {} }
+          trimThumbCache();
+          pumpThumbQueue();
+        }, function () {
+          thumbActive--;
+          myRec.state = 3;
+          myRec.cbs = [];
+          pumpThumbQueue();
+        });
+      })(key, rec, thumbGen);
+    }
+  }
+
+  /* 返回还在加载中的记录（用于之后撤销回调）；已就绪/已失败时直接回调并返回 null */
+  function requestThumb(entry, cb) {
+    var key = keyOf(entry);
+    var rec = thumbBmp.get(key);
+    if (rec && rec.state === 2) { cb(rec); return null; }
+    if (rec && rec.state === 3) { cb(null); return null; }
+    if (!rec) {
+      rec = { state: 0, src: null, url: null, cbs: [], entry: entry };
+      thumbBmp.set(key, rec);
+    }
+    rec.cbs.push(cb);
+    if (rec.state === 0) { rec.state = 1; thumbQueue.push(key); pumpThumbQueue(); }
+    return rec;
+  }
+
+  function paintThumb(canvas, src) {
+    var ctx = canvas.getContext('2d');
+    var cw = canvas.width, ch = canvas.height;
+    ctx.clearRect(0, 0, cw, ch);
+    var sw = src.width || src.naturalWidth;
+    var sh = src.height || src.naturalHeight;
+    if (!sw || !sh) return;
+    var s = Math.max(cw / sw, ch / sh);      // 等比铺满后居中裁切（等价 object-fit: cover）
+    var dw = sw * s, dh = sh * s;
+    try { ctx.drawImage(src, (cw - dw) / 2, (ch - dh) / 2, dw, dh); } catch (e) {}
+  }
+
+  function createThumbItem() {
+    var item = document.createElement('div');
+    item.className = 'thumb-item loading';
+    var cv = document.createElement('canvas');
+    cv.className = 'thumb-canvas';
+    cv.width = TH.thumbW * TH.dpr;
+    cv.height = TH.thumbH * TH.dpr;
+    var idx = document.createElement('span');
+    idx.className = 'thumb-idx';
+    item.appendChild(cv);
+    item.appendChild(idx);
+    item._canvas = cv;
+    item._idxLabel = idx;
+    item._index = -1;
+    item._key = '';
+    item._req = null;
+    item._cb = null;
+    item._left = -999; item._top = -999; item._active = false;
+    item.addEventListener('click', function () {
+      var i = item._index;
+      if (i < 0) return;
+      goTo(state.randomMode ? posOfFile(i) : i);
+    });
+    return item;
+  }
+
+  function bindThumbItem(item, i) {
+    var entry = state.files[i];
+    var key = keyOf(entry);
+    // 从上一个还在排队的记录里摘掉旧回调，避免回调堆积
+    if (item._req && item._cb) {
+      var arr = item._req.cbs;
+      var ix = arr.indexOf(item._cb);
+      if (ix >= 0) arr.splice(ix, 1);
+    }
+    item._req = null;
+    item._cb = null;
+    item.style.display = '';
+    item._index = i;
+    item._key = key;
+    item.title = (i + 1) + '. ' + entry.name;
+    item._idxLabel.textContent = i + 1;
+    item.classList.add('loading');
+    var ctx = item._canvas.getContext('2d');
+    ctx.clearRect(0, 0, item._canvas.width, item._canvas.height);
+    var cb = function (rec) {
+      if (item._key !== key) return;                 // 已滚走，丢弃
+      item._req = null;
+      item._cb = null;
+      if (!rec || !rec.src) { item.classList.remove('loading'); return; }
+      paintThumb(item._canvas, rec.src);
+      item.classList.remove('loading');
+    };
+    item._cb = cb;
+    item._req = requestThumb(entry, cb);
+  }
+
+  function ensureThumbLayout() {
+    var n = state.files.length;
+    var sc = elThumbGrid;
+    var avail = Math.max(0, sc.clientWidth - TH.padX * 2);
+    if (avail <= 0) return false;
+    var cols = Math.max(1, Math.floor(avail / TH.cellW));
+    var rows = Math.ceil(n / cols) || 1;
+    var totalH = rows * TH.cellH + TH.padY * 2;
+    thumbLayout.cols = cols;
+    thumbLayout.rows = rows;
+    thumbLayout.totalH = totalH;
+    if (elThumbSpacer.style.height !== totalH + 'px') elThumbSpacer.style.height = totalH + 'px';
+    var visRows = Math.ceil(sc.clientHeight / TH.cellH) + 1;
+    var need = Math.min(n, (visRows + TH.bufferRows) * cols);
+    while (thumbPool.length < need) {
+      var it = createThumbItem();
+      thumbPool.push(it);
+      elThumbGrid.appendChild(it);
+    }
+    return true;
+  }
+
+  function renderThumbWindow() {
+    var n = state.files.length;
+    if (!n || elThumbPanel.style.display === 'none') return;
+    if (!ensureThumbLayout()) return;
+    var sc = elThumbGrid;
+    var cols = thumbLayout.cols;
+    var st = sc.scrollTop;
+    var firstRow = Math.max(0, Math.floor((st - TH.padY) / TH.cellH) - TH.bufferRows);
+    var lastRow = Math.floor((st + sc.clientHeight - TH.padY) / TH.cellH) + TH.bufferRows;
+    var start = firstRow * cols;
+    var end = Math.min(n - 1, (lastRow + 1) * cols - 1);
+    var activeFile = state.order[state.index];
+    var want = new Set();
+    var used = 0;
+    for (var i = start; i <= end; i++) {
+      var item = thumbPool[used];
+      if (!item) break;
+      used++;
+      want.add(keyOf(state.files[i]));
+      var left = TH.padX + (i % cols) * TH.cellW;
+      var top = TH.padY + ((i / cols) | 0) * TH.cellH;
+      if (item._left !== left) { item.style.left = left + 'px'; item._left = left; }
+      if (item._top !== top) { item.style.top = top + 'px'; item._top = top; }
+      if (item._index !== i) bindThumbItem(item, i);
+      var isActive = (i === activeFile);
+      if (item._active !== isActive) { item.classList.toggle('active', isActive); item._active = isActive; }
+    }
+    thumbWanted = want;
+    for (var j = used; j < thumbPool.length; j++) {
+      var rest = thumbPool[j];
+      if (rest._index !== -1) {
+        rest.style.display = 'none';
+        rest._index = -1;
+        rest._active = false;
+        rest.classList.remove('active');
+      }
+    }
+    pumpThumbQueue();
+  }
+
+  function scrollThumbTo(pos) {
+    var sc = elThumbGrid;
+    var cols = thumbLayout.cols || 1;
+    var row = Math.floor(pos / cols);
+    var y = TH.padY + row * TH.cellH;
+    var viewTop = sc.scrollTop;
+    var viewBot = viewTop + sc.clientHeight;
+    var target = null;
+    if (y < viewTop + 4) target = Math.max(0, y - 4);
+    else if (y + TH.cellH > viewBot - 4) target = Math.max(0, y + TH.cellH + 4 - sc.clientHeight);
+    if (target !== null) {
+      thumbProgrammaticScroll = true;
+      sc.scrollTop = target;
+    }
+  }
+  var thumbProgrammaticScroll = false;
+
+  function updateThumbCount() {
+    if (elThumbCount) {
+      elThumbCount.textContent = state.files.length
+        ? '共 ' + state.files.length + ' 张 · 当前第 ' + (state.index + 1) + ' 张'
+        : '图片列表';
+    }
+  }
+
+  function resetThumbs() {
+    clearThumbBmp();
+    thumbWanted = null;
+    lastThumbTouch = 0;
+    thumbPool.forEach(function (it) {
+      it._index = -1;
+      it._key = '';
+      it._active = false;
+      it.style.display = 'none';
+      it.classList.remove('active', 'loading');
+    });
+    if (elThumbGrid) elThumbGrid.scrollTop = 0;
+    thumbLayout = { cols: 1, rows: 0, totalH: 0 };
+  }
+
+  function updateActiveThumb() {
+    if (elThumbPanel.style.display === 'none') return;
+    if (!ensureThumbLayout()) return;
+    // 用户刚在手动翻列表时不抢滚动位置；自动播放 / 空闲超过 3 秒才跟随
+    if (state.autoFlip || (Date.now() - lastThumbTouch > 3000)) scrollThumbTo(state.index);
+    renderThumbWindow();
+    updateThumbCount();
+  }
+
+  /* 合并同一帧内的多次请求：优先 rAF，rAF 被节流时用定时器兜底 */
+  function scheduleThumbRender() {
+    if (thumbRaf) return;
+    var fired = false;
+    var fire = function () {
+      if (fired) return;
+      fired = true;
+      clearTimeout(thumbRaf.timer);
+      thumbRaf = null;
+      renderThumbWindow();
+    };
+    thumbRaf = { fire: fire, timer: setTimeout(fire, 32) };
+    requestAnimationFrame(fire);
+  }
+
+  function toggleThumbPanel() {
+    var show = elThumbPanel.style.display === 'none';
+    if (show && elSidePanel.hasAttribute('hidden') === false) closeSettingsPanel();  // 两个面板互斥
+    elThumbPanel.style.display = show ? 'flex' : 'none';
+    elListBtns.forEach(function (b) { b.classList.toggle('active', show); });
+    if (show) {
+      updateActiveThumb();   // 读 clientWidth 会强制同步布局，无需等下一帧
+      showUI();              // 面板开着的时候界面不自动收
+    }
+  }
+
+  elThumbGrid.addEventListener('scroll', function () {
+    if (thumbProgrammaticScroll) thumbProgrammaticScroll = false;
+    else lastThumbTouch = Date.now();
+    scheduleThumbRender();
+  }, { passive: true });
+
+  if (window.ResizeObserver) {
+    var thumbRO = new ResizeObserver(function () {
+      if (elThumbPanel.style.display === 'none') return;
+      scheduleThumbRender();
+    });
+    thumbRO.observe(elThumbGrid);
+  } else {
+    window.addEventListener('resize', function () { updateActiveThumb(); });
+  }
+
+  /* 设置面板：浮在控制台上方的一条，不占版面。
+     与「图片列表」互斥：开一个就关另一个，免得两块浮层叠在一起把画面挡光。
+     收起时把焦点让回页面，避免方向键被面板里的控件吃掉。 */
+  function closeSettingsPanel() {
+    elSidePanel.setAttribute('hidden', '');
+    elSidebarBtn.classList.remove('active');
+    try { localStorage.setItem('comicReader:sidebarCollapsed', '1'); } catch (e) {}
+  }
+  function toggleSidebar() {
+    var show = elSidePanel.hasAttribute('hidden');
+    if (show && elThumbPanel.style.display !== 'none') toggleThumbPanel();   // 互斥
+    if (show) {
+      elSidePanel.removeAttribute('hidden');
+      elSidebarBtn.classList.add('active');
+      try { localStorage.setItem('comicReader:sidebarCollapsed', '0'); } catch (e) {}
+      showUI();
+    } else {
+      closeSettingsPanel();
+      dropFocus({ target: document.activeElement });
+    }
+  }
+  /* ===== 版本号：界面上的两处都从 APP_VERSION 填，发版只改常量一处 ===== */
+  function paintVersion() {
+    ['#appVersion', '#appVersion2'].forEach(function (sel) {
+      var el = $(sel);
+      if (el) {
+        el.textContent = APP_VERSION;
+        el.title = '本地漫画阅览器 ' + APP_VERSION;
+      }
+    });
+  }
+
+  /* ===== 界面浮层：鼠标到边缘才浮出，移开自动收起 =====
+     设计取舍：画面要尽量大，所以控制台 / 上下文条平时完全不占版面、也不显示。
+     只要「有面板开着」或「鼠标停在浮层上」，就保持浮出状态不收起来，
+     免得手一抖就点空了。 */
+  function panelsOpen() {
+    return elSidePanel.hasAttribute('hidden') === false ||
+           elThumbPanel.style.display !== 'none';
+  }
+  function showUI(keep) {
+    if (uiTimer) { clearTimeout(uiTimer); uiTimer = null; }
+    if (showingUI) return;
+    showingUI = true;
+    elReader.classList.add('ui-shown');
+  }
+  function hideUI() {
+    if (uiTimer) { clearTimeout(uiTimer); uiTimer = null; }
+    if (state.trueFull) return;
+    if (panelsOpen() || deckHover) return;   // 有面板开着 / 鼠标还停在浮层上 → 不收
+    if (!showingUI) return;
+    showingUI = false;
+    elReader.classList.remove('ui-shown');
+  }
+  function onUiActivity() {
+    showUI();
+    if (uiTimer) clearTimeout(uiTimer);
+    uiTimer = setTimeout(function () { hideUI(); }, UI_IDLE_MS);
+  }
+  /* 鼠标移到窗口上沿 → 浮出；移回画面中间 → 收起 */
+  function uiPointer(e, manual) {
+    if (state.trueFull) return;
+    var y = (e && typeof e.clientY === 'number') ? e.clientY : null;
+    var inTop = (y !== null) ? (y <= UI_HOT_TOP) : uiHotTop;
+    if (y !== null) uiHotTop = inTop;
+    if (manual || inTop) onUiActivity();
+    else hideUI();
+  }
+
+  function toggleHelp() {
+    var show = elHelpModal.style.display === 'none';
+    elHelpModal.style.display = show ? 'flex' : 'none';
+  }
+  function closeHelp() { elHelpModal.style.display = 'none'; }
+
+  function goTo(i, dir) {
+    if (state.files.length === 0) return;
+    state.index = Math.max(0, Math.min(state.files.length - 1, i));
+    if (!state.randomMode) state.normalIndex = state.index;
+    state.dir = dir || 'none';
+    hideContinueBar();
+    // 翻页（手动或自动）时把真全屏的提示条收起来：它只该在「切换播放状态 / 鼠标移到底部热区」时出现，
+    // 不该一直挡着画面
+    if (state.trueFull) hideFsHud();
+    render();
+  }
+  function next() {
+    if (state.index < state.files.length - 1) goTo(state.index + 1, 'forward');
+  }
+  function prev() {
+    if (state.index > 0) goTo(state.index - 1, 'backward');
+  }
+  function updateNav() {
+    elPrevBtn.disabled = state.index === 0;
+    elNextBtn.disabled = state.index >= state.files.length - 1;
+  }
+
+  /* ===== 自动翻页（与随机互不绑定）===== */
+  function startAuto() {
+    if (state.files.length === 0) return;
+    stopAuto();
+    state.autoFlip = true;
+    state.timer = setInterval(function () {
+      if (state.index >= state.files.length - 1) {
+        stopAuto();
+        return;
+      }
+      goTo(state.index + 1);
+    }, state.intervalSec * 1000);
+    updateAutoUI();
+  }
+  function stopAuto() {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    state.autoFlip = false;
+    updateAutoUI();
+  }
+  function toggleAuto() {
+    if (state.autoFlip) stopAuto(); else startAuto();
+  }
+  function updateAutoUI() {
+    elAutoBtn.setAttribute('aria-pressed', state.autoFlip ? 'true' : 'false');
+    elAutoBtn.classList.toggle('active', state.autoFlip);
+    updateStatusBar();
+    if (state.trueFull) updateFsHud();   // 真全屏下把播放状态写进提示层
+  }
+
+  function setIntervalSec(sec) {
+    state.intervalSec = sec;
+    elInterval.value = sec;
+    elIntervalVal.textContent = sec + ' 秒';
+    if (state.autoFlip) startAuto(); // 重启计时器使新间隔生效
+    updateStatusBar();
+    saveProgress();
+  }
+
+  /* ===== 主题 ===== */
+  function setTheme(t) {
+    state.theme = t;
+    document.documentElement.setAttribute('data-theme', t);
+    elThemeBtns.forEach(function (b) { b.textContent = '背景：' + THEME_LABEL[t]; });
+    saveProgress();
+  }
+  function toggleTheme() {
+    var idx = THEME_ORDER.indexOf(state.theme);
+    setTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
+  }
+
+  /* ===== 翻页特效 ===== */
+  function setEffect(v) {
+    state.effect = v;
+    elEffectSelect.value = v;
+    saveProgress();
+  }
+  function setAnimSpeed(v) {
+    state.animSpeed = v;
+    elAnimSpeed.value = v;
+    elAnimSpeedVal.textContent = v + 'ms';
+    saveProgress();
+  }
+  function playTransition() {
+    if (!elImg.animate || !state.effect || state.effect === 'none') return;
+    elImg.getAnimations().forEach(function (a) { a.cancel(); });
+    var opts = { duration: state.animSpeed, easing: 'ease-out' };
+    if (state.effect === 'fade') {
+      elImg.animate([{ opacity: 0 }, { opacity: 1 }], opts);
+    } else if (state.effect === 'slide') {
+      var dx = state.dir === 'backward' ? -64 : 64;
+      elImg.animate(
+        [{ opacity: 0, transform: 'translateX(' + dx + 'px)' }, { opacity: 1, transform: 'translateX(0)' }],
+        opts
+      );
+    } else if (state.effect === 'zoom') {
+      elImg.animate(
+        [{ opacity: 0, transform: 'scale(0.93)' }, { opacity: 1, transform: 'scale(1)' }],
+        opts
+      );
+    }
+  }
+
+  /* ===== 缩放与适配 ===== */
+  function setFitMode(mode) {
+    state.fitMode = mode;
+    elFitSelect.value = mode;
+    applyFitToImg();
+    updateStatusBar();
+    saveProgress();
+  }
+  function setZoomPercent(p) {
+    state.zoomPercent = p;
+    elZoomBtn.textContent = p + '%';
+    if (state.fitMode === 'percent') applyFitToImg();
+    updateStatusBar();
+    saveProgress();
+  }
+  function applyFitToImg() {
+    var nw = elImg.naturalWidth;
+    var mode = state.fitMode;
+    elImg.classList.remove('fit-width', 'fit-height', 'fit-original', 'fit-percent');
+    elImg.style.width = '';
+    if (mode === 'percent' && nw) {
+      elImg.classList.add('fit-percent');
+      elImg.style.width = Math.round(nw * state.zoomPercent / 100) + 'px';
+    } else if (mode === 'height') {
+      elImg.classList.add('fit-height');
+    } else if (mode === 'original') {
+      elImg.classList.add('fit-original');
+    } else {
+      elImg.classList.add('fit-width');
+    }
+    updateStatusBar();
+  }
+  function zoom(delta) {
+    if (state.fitMode !== 'percent') setFitMode('percent');
+    setZoomPercent(Math.max(ZOOM_STEPS[0], Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], state.zoomPercent + delta)));
+  }
+  function cycleZoom() {
+    if (state.fitMode !== 'percent') setFitMode('percent');
+    var idx = ZOOM_STEPS.indexOf(state.zoomPercent);
+    var nextIdx = (idx + 1) % ZOOM_STEPS.length;
+    setZoomPercent(ZOOM_STEPS[nextIdx]);
+  }
+
+  /* ===== 进度记忆 ===== */
+  function storageKey() { return 'comicReader:' + state.folderName; }
+  var progressSaveTimer = null;
+  function saveProgress() {
+    if (progressSaveTimer) return;
+    progressSaveTimer = setTimeout(persistProgress, 300);
+  }
+  function persistProgress() {
+    progressSaveTimer = null;
+    if (!state.folderName || state.files.length === 0) return;
+    try {
+      localStorage.setItem(storageKey(), JSON.stringify({
+        index: state.index,
+        normalIndex: state.normalIndex,
+        intervalSec: state.intervalSec,
+        bgMode: state.theme,
+        fitMode: state.fitMode,
+        zoomPercent: state.zoomPercent,
+        effect: state.effect,
+        sortMode: state.sortMode,
+        animSpeed: state.animSpeed,
+        randomMode: state.randomMode,
+        order: state.order
+      }));
+    } catch (e) { /* 存储不可用时静默 */ }
+  }
+  function loadProgress() {
+    if (!state.folderName) return null;
+    try {
+      return JSON.parse(localStorage.getItem(storageKey()));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* ===== 续读提示 ===== */
+  function showContinueBar(savedIndex) {
+    var target = Math.min(savedIndex, state.files.length - 1);
+    elContinueText.textContent = '上次读到第 ' + (target + 1) + ' 页';
+    elContinueBar.style.display = 'flex';
+    elContinueBtn.onclick = function () { goTo(target); };
+    elDismissBtn.onclick = hideContinueBar;
+  }
+  function hideContinueBar() {
+    elContinueBar.style.display = 'none';
+  }
+
+  /* ===== 最近打开 ===== */
+  function getRecents() {
+    try { return JSON.parse(localStorage.getItem(RECENTS_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function saveRecents(list) {
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  function addRecent(folderName, handle) {
+    if (!folderName) return;
+    var list = getRecents();
+    var existing = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].name === folderName) { existing = list[i]; list.splice(i, 1); break; }
+    }
+    var rec = {
+      name: folderName,
+      time: Date.now(),
+      handleId: existing && existing.handleId ? existing.handleId : null,
+      index: state.index,
+      total: state.files.length
+    };
+    if (handle && window.indexedDB) {
+      rec.handleId = folderName + '_' + rec.time;
+      storeHandle(rec.handleId, handle);
+    }
+    list.unshift(rec);
+    while (list.length > MAX_RECENTS) {
+      var old = list.pop();
+      if (old.handleId) deleteHandle(old.handleId);
+    }
+    saveRecents(list);
+    renderRecents();
+  }
+  function renderRecents() {
+    var box = document.getElementById('recentBox');
+    if (!box) return;
+    var list = getRecents();
+    if (list.length === 0) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    var ul = document.getElementById('recentList');
+    ul.innerHTML = '';
+    list.forEach(function (r) {
+      var li = document.createElement('li');
+      li.className = 'recent-item';
+      var nameEl = document.createElement('span');
+      nameEl.className = 'recent-name';
+      nameEl.textContent = r.name;
+      nameEl.title = r.name;
+      var meta = document.createElement('span');
+      meta.className = 'recent-meta';
+      var parts = [];
+      if (r.total) parts.push((r.index + 1) + '/' + r.total);
+      var when = formatTime(r.time);
+      if (when) parts.push(when);
+      meta.textContent = parts.join(' · ');
+      li.appendChild(nameEl);
+      li.appendChild(meta);
+      li.addEventListener('click', function () { openRecent(r); });
+      ul.appendChild(li);
+    });
+  }
+  function formatTime(t) {
+    if (!t) return '';
+    var d = new Date(t);
+    var now = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    if (d.toDateString() === now.toDateString()) return pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+  async function openRecent(r) {
+    if (r.handleId && window.indexedDB) {
+      try {
+        var handle = await getHandle(r.handleId);
+        if (handle) {
+          var perm = await handle.requestPermission({ mode: 'read' });
+          if (perm === 'granted') {
+            var entries = await listImagesFromHandle(handle);
+            openFromEntries(entries, r.name, handle);
+            return;
+          }
+        }
+      } catch (e) { /* 降级到重新选择 */ }
+    }
+    alert('无法自动重新打开该文件夹，请手动重新选择。');
+    elFileInput.click();
+  }
+
+  /* ===== IndexedDB 存储目录句柄 ===== */
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function (e) {
+        if (!e.target.result.objectStoreNames.contains(DB_STORE)) {
+          e.target.result.createObjectStore(DB_STORE);
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function storeHandle(id, handle) {
+    idbOpen().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(handle, id);
+        tx.oncomplete = res;
+        tx.onerror = rej;
+        tx.onabort = rej;
+      });
+    }).catch(function () {});
+  }
+  function getHandle(id) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (res, rej) {
+        var req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(id);
+        req.onsuccess = function () { res(req.result); };
+        req.onerror = function () { rej(req.error); };
+      });
+    });
+  }
+  function deleteHandle(id) {
+    idbOpen().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = res;
+        tx.onerror = rej;
+      });
+    }).catch(function () {});
+  }
+
+  /* ===== 全屏 =====
+     「真」全屏：进入浏览器全屏并隐藏全部界面（顶栏 / 进度条 / 侧栏 / 图片列表 / 状态栏），
+     只留图片本身；F 或 Esc 退出。
+     真全屏下没有常驻按钮，所以每次操作（动鼠标 / 点击 / 按键）会短暂浮出一个提示层，
+     显示「正在自动翻页 / 已暂停、第几页」和操作提示，2.6 秒后自动淡出。 */
+  var cursorIdleTimer = null;
+  var hudTimer = null;
+  var fsHintShown = false;
+  var hudByHover = false;      // 这一次提示条是不是「鼠标悬停到底部热区」调出来的
+
+  function updateFsHud() {
+    if (!elFsHud) return;
+    var playing = state.autoFlip;
+    elFsHudState.textContent = playing
+      ? '⏸ 自动翻页中 · 每 ' + state.intervalSec + ' 秒一页'
+      : '▶ 已暂停';
+    elFsHudState.classList.toggle('playing', playing);
+    elFsHudPage.textContent = state.files.length
+      ? (state.randomMode ? '随机 ' : '') + (state.index + 1) + ' / ' + state.files.length
+      : '';
+  }
+  function showFsHud(fromHover) {
+    if (!elFsHud || !state.trueFull) return;
+    hudByHover = !!fromHover;      // 悬停调出的才受「移开即收起」约束
+    updateFsHud();
+    elFsHud.classList.add('show');
+    if (hudTimer) clearTimeout(hudTimer);
+    hudTimer = setTimeout(function () {
+      hudTimer = null;
+      if (elFsHud) elFsHud.classList.remove('show');
+    }, 2600);
+  }
+  function hideFsHud() {
+    hudByHover = false;
+    if (hudTimer) { clearTimeout(hudTimer); hudTimer = null; }
+    if (elFsHud) elFsHud.classList.remove('show');
+  }
+
+  function enterTrueFull() {
+    state.trueFull = true;
+    elReader.classList.add('ui-hidden');
+    closeHelp();
+    if (!document.fullscreenElement && elReader.requestFullscreen) {
+      var p = null;
+      try { p = elReader.requestFullscreen(); } catch (e) { p = null; }
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    }
+    updateFullUI();
+    armCursorIdle();
+    // 第一次进真全屏时把操作方式写清楚（之后只显示播放状态）
+    if (!fsHintShown && elFsHudHint) {
+      fsHintShown = true;
+      elFsHudHint.textContent = '想连续自动翻页：点画面正中间，或按 P（点右侧 / 左侧翻页，Esc 退出全屏）';
+    } else if (elFsHudHint) {
+      elFsHudHint.textContent = '点画面中间 播放 / 暂停 · 点左右两侧翻页 · P 播放暂停 · Esc 退出全屏';
+    }
+    showFsHud();
+  }
+  function exitTrueFull() {
+    state.trueFull = false;
+    elReader.classList.remove('ui-hidden', 'cursor-idle');
+    hideFsHud();
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try {
+        var p = document.exitFullscreen();
+        if (p && typeof p.catch === 'function') p.catch(function () {});
+      } catch (e) {}
+    }
+    updateFullUI();
+  }
+  function toggleTrueFull() {
+    if (state.trueFull) exitTrueFull(); else enterTrueFull();
+  }
+  function updateFullUI() {
+    elFullBtns.forEach(function (b) { b.classList.toggle('active', state.trueFull); });
+    // 只改文字那一段：按钮里还有一枚键帽 kbd，整段 textContent 会把它一起抹掉
+    if (elFullPanelLabel) elFullPanelLabel.textContent = state.trueFull ? '退出全屏' : '真全屏';
+    updateStatusBar();
+  }
+  function armCursorIdle() {
+    elReader.classList.remove('cursor-idle');
+    if (cursorIdleTimer) clearTimeout(cursorIdleTimer);
+    if (!state.trueFull) return;
+    cursorIdleTimer = setTimeout(function () {
+      if (state.trueFull) elReader.classList.add('cursor-idle');
+    }, 2000);
+  }
+  document.addEventListener('fullscreenchange', function () {
+    // 用户按 Esc / 浏览器退出全屏时，同步恢复界面
+    if (!document.fullscreenElement && state.trueFull) {
+      state.trueFull = false;
+      elReader.classList.remove('ui-hidden', 'cursor-idle');
+      hideFsHud();
+      updateFullUI();
+    }
+  });
+  elViewer.addEventListener('mousemove', function (e) {
+    if (!state.trueFull) return;
+    armCursorIdle();
+    // 只有鼠标进到画面底部的小热区才浮出提示条；在画面中间随手动一下不该弹出来
+    // （虚拟事件 / 拿不到坐标时一律不弹，宁可不显示也不要误弹）
+    if (!e || typeof e.clientY !== 'number') return;
+    var fromBottom = elViewer.getBoundingClientRect().bottom - e.clientY;
+    if (fromBottom <= FS_HUD_HOT_H) {
+      showFsHud(true);
+    } else if (hudByHover && fromBottom > FS_HUD_HOT_H + FS_HUD_OUT_H) {
+      hideFsHud();
+    }
+  });
+
+  /* ===== 视图点击区：左 / 中 / 右 =====
+     ⚠ 判定基准必须是**画面区（#viewer）**，不能是图片（#mainImg）。
+       用图片盒算的话，图片两侧的留白会被当成"图片内部"，点在屏幕最左边算出来是负 ratio、
+       落不到"上一页"；用户就是按画面位置点的，所以按画面宽分三段才符合直觉。 */
+  elViewer.addEventListener('click', function (e) {
+    var rect = elViewer.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var ratio = x / rect.width;
+    var middle = (ratio >= 0.33 && ratio <= 0.67);
+    if (ratio < 0.33) {
+      prev();
+    } else if (ratio > 0.67) {
+      next();
+    } else {
+      toggleAuto();
+    }
+    // 只有「播放 / 暂停」才弹状态提示；左右翻页交由 goTo() 把提示条收掉
+    if (state.trueFull) { armCursorIdle(); if (middle) showFsHud(); }
+  });
+
+  /* 滚轮：Ctrl+滚轮 缩放，否则滚动 */
+  elViewer.addEventListener('wheel', function (e) {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      zoom(e.deltaY < 0 ? 25 : -25);
+    }
+  }, { passive: false });
+
+  /* ===== 键盘快捷键 ===== */
+  document.addEventListener('keydown', function (e) {
+    var tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+
+    if (state.trueFull && e.key !== 'Escape') { armCursorIdle(); showFsHud(); }
+
+    if (e.key === 'Escape') {
+      if (elHelpModal.style.display !== 'none') { closeHelp(); return; }
+      if (state.trueFull) { exitTrueFull(); return; }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowRight':
+        e.preventDefault();
+        next();
+        break;
+      case ' ':
+        e.preventDefault();
+        next();
+        break;
+      case 'ArrowLeft':
+        prev();
+        break;
+      case 'PageDown':
+        e.preventDefault();
+        next();
+        break;
+      case 'PageUp':
+        e.preventDefault();
+        prev();
+        break;
+      case 'Enter':
+        e.preventDefault();
+        toggleAuto();
+        break;
+      case 'p':
+      case 'P':
+        toggleAuto();
+        break;
+      case 'f':
+      case 'F':
+        toggleTrueFull();
+        break;
+      case '+':
+      case '=':
+        zoom(25);
+        break;
+      case '-':
+        zoom(-25);
+        break;
+      case '0':
+        setFitMode(DEFAULT_FIT);
+        break;
+      case 'w':
+      case 'W':
+        setFitMode('width');
+        break;
+      case 'h':
+      case 'H':
+        setFitMode('height');
+        break;
+      case 'o':
+      case 'O':
+        setFitMode('original');
+        break;
+      case 't':
+      case 'T':
+        toggleThumbPanel();
+        break;
+      case 'r':
+      case 'R':
+        toggleRandom();
+        break;
+      case 's':
+      case 'S':
+        toggleSidebar();
+        break;
+      case '?':
+        toggleHelp();
+        break;
+    }
+  });
+
+  /* 点过按钮 / 下拉框之后把焦点还回去，避免方向键被控件吃掉。
+     ⚠ 这个函数既是"手动词焦点"的工具，也是 document 上的 change / click 处理器：
+       两种调用方式都会来，所以 e / e.target 可能为空，必须先挡一道。 */
+  function dropFocus(e) {
+    var t = e && e.target;
+    if (t && t.blur && (t.tagName === 'SELECT' || t.tagName === 'INPUT' || t.tagName === 'BUTTON')) {
+      t.blur();
+    }
+  }
+  document.addEventListener('change', dropFocus);
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t && t.tagName === 'BUTTON' && t.blur) t.blur();
+  });
+
+  /* ===== 控件绑定 ===== */
+  $('#openBtn').addEventListener('click', importFolder);
+  $('#openBtn2').addEventListener('click', importFolder);
+  elFileInput.addEventListener('change', function (e) {
+    if (e.target.files && e.target.files.length) openFolder(e.target.files);
+    e.target.value = ''; // 允许再次选择同一文件夹
+  });
+
+  elInterval.addEventListener('input', function (e) {
+    setIntervalSec(parseInt(e.target.value, 10) || 5);
+  });
+  elProgress.addEventListener('input', function (e) {
+    goTo(parseInt(e.target.value, 10) || 0);
+  });
+  elAutoBtn.addEventListener('click', toggleAuto);
+  elRandomBtn.addEventListener('click', toggleRandom);
+  elFitSelect.addEventListener('change', function (e) {
+    setFitMode(e.target.value);
+  });
+  elEffectSelect.addEventListener('change', function (e) {
+    setEffect(e.target.value);
+  });
+  elSortSelect.addEventListener('change', function (e) {
+    setSort(e.target.value);
+  });
+  elAnimSpeed.addEventListener('input', function (e) {
+    setAnimSpeed(parseInt(e.target.value, 10) || 400);
+  });
+  elZoomBtn.addEventListener('click', cycleZoom);
+  elListBtns.forEach(function (b) { b.addEventListener('click', toggleThumbPanel); });
+  if (elThumbClose) elThumbClose.addEventListener('click', toggleThumbPanel);
+  elSidebarBtn.addEventListener('click', toggleSidebar);
+  if (elSidebarClose) elSidebarClose.addEventListener('click', toggleSidebar);
+  elHelpBtn.addEventListener('click', toggleHelp);
+  elThemeBtns.forEach(function (b) { b.addEventListener('click', toggleTheme); });
+  elHelpClose.addEventListener('click', toggleHelp);
+  elHelpModal.addEventListener('click', function (e) {
+    if (e.target === elHelpModal) closeHelp(); // 点击遮罩关闭
+  });
+  elFullBtns.forEach(function (b) { b.addEventListener('click', toggleTrueFull); });
+  elPrevBtn.addEventListener('click', prev);
+  elNextBtn.addEventListener('click', next);
+
+  /* 关闭页面前落盘待保存的进度 */
+  window.addEventListener('beforeunload', function () {
+    if (progressSaveTimer) {
+      clearTimeout(progressSaveTimer);
+      progressSaveTimer = null;
+      persistProgress();
+    }
+  });
+
+  /* ===== 初始化 ===== */
+  /* 设置面板默认收起：它是"要改才打开"的东西。
+     只有上次是打开状态（存了 '0'）才保持打开。 */
+  var panelOpen = false;
+  try { panelOpen = localStorage.getItem('comicReader:sidebarCollapsed') === '0'; } catch (e) {}
+  if (panelOpen) {
+    elSidePanel.removeAttribute('hidden');
+    elSidebarBtn.classList.add('active');
+    showUI();
+  } else {
+    elSidePanel.setAttribute('hidden', '');
+    elSidebarBtn.classList.remove('active');
+  }
+
+  /* 界面浮层的显隐绑定：鼠标移到窗口上沿浮出，移开 2.6 秒收起。
+     ⚠ 「鼠标停在浮层上」不能只看边界判定 —— 浮层贴着上沿，鼠标从上沿往下离开时
+       会先离开热区、后离开浮层，所以要单独用 mouseenter / leave 挂钩。 */
+  elReader.addEventListener('mousemove', function (e) { uiPointer(e); }, { passive: true });
+  document.addEventListener('mousemove', function (e) { uiPointer(e); }, { passive: true });  // 鼠标在窗口边缘外时也能唤醒
+  document.addEventListener('mouseleave', function () { uiPointer(null, false); });
+  elTopbar.addEventListener('mouseenter', function () { deckHover = true; showUI(); });
+  elTopbar.addEventListener('mouseleave', function () { deckHover = false; onUiActivity(); });
+  elSidePanel.addEventListener('mouseenter', function () { deckHover = true; showUI(); });
+  elSidePanel.addEventListener('mouseleave', function () { deckHover = false; onUiActivity(); });
+  [elThumbPanel, elContinueBar].forEach(function (el) {
+    if (!el) return;
+    el.addEventListener('mouseenter', function () { deckHover = true; showUI(); });
+    el.addEventListener('mouseleave', function () { deckHover = false; onUiActivity(); });
+  });
+  /* 刚打开就先露一次脸，让不知道有控制台的人看见它在哪；之后靠鼠标唤醒 */
+  showUI();
+  onUiActivity();
+
+  paintVersion();
+  setTheme('white');
+  setFitMode(DEFAULT_FIT);   // 默认：高度适应
+  elZoomBtn.textContent = state.zoomPercent + '%';
+  elEffectSelect.value = state.effect;
+  elSortSelect.value = state.sortMode;
+  elAnimSpeed.value = state.animSpeed;
+  elAnimSpeedVal.textContent = state.animSpeed + 'ms';
+  updateFullUI();
+  updateThumbCount();
+  renderRecents();
+})();
+  </script>
+</body>
+</html>
